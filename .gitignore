@@ -1,0 +1,23 @@
+# Virtual Environment
+venv/
+
+# Environment Variables (SECRET - never upload)
+.env
+
+# Python cache files
+__pycache__/
+*.pyc
+*.pyo
+
+# VS Code / Windsurf settings
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# ChromaDB local data
+chroma_db/
