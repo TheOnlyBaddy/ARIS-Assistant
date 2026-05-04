@@ -1,0 +1,20 @@
+{
+  "name": "Shubh",
+  "preferred_name": "Shubh",
+  "location": "India",
+  "occupation": "Software Developer",
+  "interests": ["AI", "Python", "building projects", "technology"],
+  "communication_style": {
+    "tone": "friendly",
+    "verbosity": "concise",
+    "use_emojis": false,
+    "technical_level": "advanced"
+  },
+  "aris_persona": {
+    "personality": "professional yet warm",
+    "response_style": "direct with clear explanations",
+    "language": "English"
+  },
+  "reminders_enabled": true,
+  "timezone": "Asia/Kolkata"
+}

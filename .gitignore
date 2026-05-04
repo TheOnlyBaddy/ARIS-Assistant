@@ -1,23 +1,19 @@
-# Virtual Environment
+# Python
 venv/
-
-# Environment Variables (SECRET - never upload)
-.env
-
-# Python cache files
 __pycache__/
 *.pyc
 *.pyo
+.env
 
-# VS Code / Windsurf settings
+# Database & vector store (local data, don't commit)
+backend/aris.db
+backend/chroma_db/
+
+# Node
+frontend/node_modules/
+frontend/dist/
+
+# Editor
+.windsurf/
 .vscode/
-
-# OS files
-.DS_Store
-Thumbs.db
-
-# Logs
 *.log
-
-# ChromaDB local data
-chroma_db/
