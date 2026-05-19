@@ -4,7 +4,7 @@ Backend Main Entry Point
 Phase 2 - Communication Layer
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
@@ -12,11 +12,17 @@ from dotenv import load_dotenv
 from typing import Any, Optional
 import uvicorn
 import os
+import sys
 import httpx
 import threading
 import json
 from google import genai
 from google.genai import types
+import asyncio
+
+# Add project root to Python path to resolve voice module import
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from database import (
     init_db,
     save_message,
@@ -87,6 +93,18 @@ from integrations.router import route_message, execute_intent
 from integrations.tasks import get_task_summary
 from integrations.calendar import get_agenda_summary
 from integrations.gmail import get_inbox_summary
+from voice.pipeline import (
+    start_pipeline,
+    stop_pipeline,
+    get_pipeline_status
+)
+from voice.tts import speak_async, get_tts_status
+from vision.ocr import ocr_screen, ocr_camera, ocr_file
+from vision.screen import analyze_screen, describe_screen
+import whisper as _whisper
+import tempfile, shutil
+from fastapi import UploadFile, File
+
 
 load_dotenv()
 
@@ -873,7 +891,7 @@ async def daily_briefing():
     """
     try:
         # ── Gather all data in parallel ───────────────────────────────────────
-        import asyncio
+
         from datetime import datetime
 
         def fetch_calendar():
@@ -991,6 +1009,148 @@ Keep it conversational, warm, and under 200 words. Do not use bullet points — 
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Briefing failed: {str(e)}")
+
+# ── Voice: Whisper STT ──────────────────────────────────────
+
+# Load once at startup (not on every request)
+_whisper_model = _whisper.load_model("base")
+print("✅ Whisper STT model loaded")
+
+@app.post("/voice/transcribe")
+async def transcribe_audio(audio: UploadFile = File(...)):
+    """
+    Accepts an audio file (WAV/MP3/M4A), returns transcribed text.
+    Used by frontend and voice pipeline.
+    """
+    # Save upload to a temp file (Whisper needs a file path, not bytes)
+    suffix = os.path.splitext(audio.filename)[-1] or ".wav"
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+        shutil.copyfileobj(audio.file, tmp)
+        tmp_path = tmp.name
+
+    try:
+        result = _whisper_model.transcribe(tmp_path, language="en", fp16=False, verbose=False)
+        text = result["text"].strip()
+        return {"text": text, "language": result.get("language", "en")}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")
+    finally:
+        os.unlink(tmp_path)
+
+# ── Voice: TTS endpoint ────────────────────────────────────────────────────────
+
+@app.post("/voice/speak")
+async def voice_speak(request: Request):
+    """
+    POST {"text": "Hello Shubh"}
+    Speaks via ElevenLabs or local TTS (automatic fallback)
+    Returns which engine was used
+    """
+    body = await request.json()
+    text = body.get("text", "").strip()
+
+    if not text:
+        raise HTTPException(status_code=400, detail="No text provided")
+
+    # Speak in background so endpoint returns immediately
+    speak_async(text)
+
+    return {
+        "status": "speaking",
+        "text": text,
+        "length": len(text)
+    }
+
+@app.get("/voice/tts-status")
+async def tts_status():
+    """Returns current TTS engine status"""
+    return get_tts_status()
+
+# ── Voice Pipeline endpoints ───────────────────────────────────
+
+@app.post("/voice/start")
+async def voice_start():
+    """Start the always-on voice pipeline"""
+    result = start_pipeline()
+    return result
+
+@app.post("/voice/stop")
+async def voice_stop():
+    """Stop the voice pipeline"""
+    result = stop_pipeline()
+    return result
+
+@app.get("/voice/status")
+async def voice_status():
+    """
+    Returns current voice pipeline state.
+    Frontend polls this to show listening/speaking/thinking indicators.
+    """
+    return get_pipeline_status()
+
+@app.post("/voice/speak")
+async def voice_speak(request: Request):
+    """Manually trigger ARIS to speak any text"""
+    body = await request.json()
+    text = body.get("text", "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="No text provided")
+    speak_async(text)
+    return {"status": "speaking", "text": text}
+
+# ── Vision: Screen endpoint ────────────────────────────────────
+
+@app.get("/vision/screen")
+async def vision_screen(prompt: str = None, monitor: int = 1):
+    """
+    Captures screen and returns Gemini Vision description.
+    Optional ?prompt=what+is+on+my+screen
+    Optional ?monitor=2 for second monitor
+    """
+    try:
+        result = analyze_screen(prompt=prompt, monitor_index=monitor)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ── Vision: Camera endpoint ────────────────────────────────────
+
+@app.get("/vision/camera")
+async def vision_camera(prompt: str = None, camera: int = 0):
+    """
+    Captures webcam frame and returns Gemini Vision description.
+    Optional ?prompt=what+do+you+see
+    Optional ?camera=1 for second camera
+    """
+    try:
+        from vision.camera import analyze_camera
+        result = analyze_camera(prompt=prompt, camera_index=camera)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ── Vision: OCR endpoints ──────────────────────────────────────
+
+@app.get("/vision/ocr")
+async def vision_ocr(
+    source  : str = "screen",   # "screen" or "camera"
+    mode    : str = "extract",  # "extract" | "summarize" | "translate" | "answer"
+    question: str = ""
+):
+    """
+    OCR endpoint — reads text from screen or camera.
+    ?source=screen&mode=summarize
+    ?source=camera&mode=extract
+    ?source=screen&mode=answer&question=what+is+the+total
+    """
+    try:
+        if source == "camera":
+            result = ocr_camera(mode=mode, question=question)
+        else:
+            result = ocr_screen(mode=mode, question=question)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 # ─── HEALTH CHECK ─────────────────────────────────────────────────────────────
 
