@@ -12,6 +12,7 @@ Talks to you. Sees your screen. Manages your life.
 | 1 | Core Brain — chat, memory, safety | ✅ Complete |
 | 2 | Communication Layer — Gmail, Calendar, Todoist | ✅ Complete |
 | 3 | Voice & Vision — mic, STT, TTS, screen/camera/OCR | ✅ Complete |
+| 4 | OS Control & System Dashboard | ✅ Complete |
 
 ---
 
@@ -265,10 +266,39 @@ Thumbs.db
 
 ---
 
-## Phase 4 — Planned
-- 🔍 Web search — ARIS browses the internet for you
-- 🖥️ System control — open apps, control your PC
-- 📊 Data analysis — analyze files, CSVs, generate charts
-- 🤖 Autonomous agents — ARIS completes multi-step tasks on its own
-- 📱 Mobile PWA — access ARIS from your phone
-- 🐳 Docker deployment
+## Phase 4 — OS Control & System Dashboard ✅
+
+### Stack additions
+- **System Automation:** Python process management, window controls, native file system integrations, and OS utilities.
+- **Safety Auditing:** SQLite-based action logging and manual confirmation interceptor layer.
+- **System Stats:** `psutil` system diagnostics.
+- **Web Automation:** Python-based browser and web search utilities.
+
+### Features
+- **Step 1 — PC Control:** Launching native applications and closing windows on your system.
+- **Step 2 — File & Folder Management:** Creating, reading, overwriting, renaming, copying, deleting, and searching files/folders locally.
+- **Step 3 — System Monitoring:** Real-time health statistics covering CPU, RAM, Battery, Disk space, Network usage, and running processes.
+- **Step 4 — Browser Automation:** Opening websites and performing automated Google web searches.
+- **Step 5 — Clipboard Control:** Interacting with system clipboard to read and write content.
+- **Step 6 — Desktop Notifications:** Generating native OS desktop notifications.
+- **Step 7 — Natural Language Control Router:** Autonomous keyword-based fallback router matching user queries directly to OS control intents.
+- **Step 8 — Safety Layer for control actions:** Confirmation prompts for destructive actions (e.g. file deletion, killing processes) and logging every action to an SQLite audit log (`audit_log.db`).
+- **Step 9 — Frontend System Dashboard:** A dedicated "System" React tab featuring circular gauges, disk status bars, network charts, and an interactive process manager with PID sorting.
+- **Step 10 — Git commit:** Staged and committed changes ready for production deployment.
+
+### API Endpoints
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | /control/audit | Retrieve recent control action audit logs |
+| GET | /control/system | Get system health stats (CPU, RAM, Network, Battery, Disks) |
+| POST | /control/system/processes | List running system processes (sorted) |
+| POST | /control/system/kill | Force-terminate a system process (safety checked) |
+| POST | /control/files/delete | Safely delete a file after confirmation |
+| POST | /control/files/search | Search for local files by query and extension |
+| POST | /control/files/open | Open a local file in its default program |
+| POST | /control/files/explorer | Open file location in File Explorer |
+| POST | /control/browser/open | Open a website in the default browser |
+| POST | /control/browser/search | Run a search query on Google |
+| POST | /control/clipboard/read | Read the current clipboard text |
+| POST | /control/clipboard/write | Copy text to the clipboard |
+| POST | /control/notification | Send a native desktop notification |

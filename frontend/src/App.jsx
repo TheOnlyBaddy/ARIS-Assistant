@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import axios from 'axios'
 import './App.css'
+import GoogleAuthButton from "./components/GoogleAuthButton"
+import SystemDashboard from "./components/SystemDashboard"
 
 const API_BASE = 'http://localhost:8000'
 
@@ -46,7 +48,7 @@ function EmailCard({ email }) {
 // ── Event card ────────────────────────────────────────────────────────────────
 function EventCard({ event }) {
   const start = event.start ? new Date(event.start).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''
-  const end   = event.end   ? new Date(event.end).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''
+  const end = event.end ? new Date(event.end).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''
   return (
     <div className="card event-card">
       <div className="card-header">
@@ -158,12 +160,11 @@ function Message({ msg }) {
         {msg.safety_status === 'needs_confirmation' && (
           <span className="safety-tag warn">⚠️ Confirmation needed</span>
         )}
-        {/* Vision result card inside message */}
         {msg.vision_result && (
           <div className="vision-result-card">
             <div className="vision-result-header">
               {msg.vision_type === 'screen' ? '🖥️ Screen Vision' :
-               msg.vision_type === 'camera' ? '📷 Camera Vision' : '📝 OCR Result'}
+                msg.vision_type === 'camera' ? '📷 Camera Vision' : '📝 OCR Result'}
             </div>
             {msg.vision_image && (
               <img
@@ -182,7 +183,6 @@ function Message({ msg }) {
             {msg.intent && msg.intent !== 'general_chat' && ` · ${msg.intent}`}
           </span>
         )}
-        {/* Emotion tag on ARIS messages */}
         {!isUser && msg.emotion && msg.emotion !== 'neutral' && (
           <span className="emotion-tag">{msg.emotionEmoji} {msg.emotion}</span>
         )}
@@ -195,15 +195,15 @@ function Message({ msg }) {
 // ── Voice status badge ────────────────────────────────────────────────────────
 function VoiceStatusBadge({ status, emotion, emotionEmoji }) {
   const statusConfig = {
-    off          : { label: 'Voice Off',    color: '#666',   pulse: false },
-    loading      : { label: 'Loading...',   color: '#f59e0b', pulse: true  },
-    listening    : { label: 'Listening',    color: '#10b981', pulse: true  },
-    wake_detected: { label: 'Wake Word!',   color: '#6366f1', pulse: true  },
-    recording    : { label: 'Recording',    color: '#ef4444', pulse: true  },
-    transcribing : { label: 'Transcribing', color: '#f59e0b', pulse: true  },
-    thinking     : { label: 'Thinking',     color: '#6366f1', pulse: true  },
-    speaking     : { label: 'Speaking',     color: '#3b82f6', pulse: true  },
-    error        : { label: 'Error',        color: '#ef4444', pulse: false },
+    off: { label: 'Voice Off', color: '#666', pulse: false },
+    loading: { label: 'Loading...', color: '#f59e0b', pulse: true },
+    listening: { label: 'Listening', color: '#10b981', pulse: true },
+    wake_detected: { label: 'Wake Word!', color: '#6366f1', pulse: true },
+    recording: { label: 'Recording', color: '#ef4444', pulse: true },
+    transcribing: { label: 'Transcribing', color: '#f59e0b', pulse: true },
+    thinking: { label: 'Thinking', color: '#6366f1', pulse: true },
+    speaking: { label: 'Speaking', color: '#3b82f6', pulse: true },
+    error: { label: 'Error', color: '#ef4444', pulse: false },
   }
   const cfg = statusConfig[status] || statusConfig.off
   return (
@@ -226,7 +226,7 @@ function VisionModal({ result, onClose }) {
         <div className="modal-header">
           <h2>
             {result.type === 'screen' ? '🖥️ Screen Vision' :
-             result.type === 'camera' ? '📷 Camera Vision' : '📝 OCR Result'}
+              result.type === 'camera' ? '📷 Camera Vision' : '📝 OCR Result'}
           </h2>
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
@@ -244,51 +244,47 @@ function VisionModal({ result, onClose }) {
   )
 }
 
-// ── Integration status bar ────────────────────────────────────────────────────
-function IntegrationStatus({ integrations }) {
-  return (
-    <div className="integration-bar">
-      {integrations.map(({ name, icon, connected }) => (
-        <div key={name} className={`integration-pill ${connected ? 'connected' : 'disconnected'}`}>
-          <span>{icon}</span>
-          <span>{name}</span>
-          <span>{connected ? '✓' : '✗'}</span>
-        </div>
-      ))}
-    </div>
-  )
-}
+const formatModelName = (modelId) => {
+  if (!modelId) return '';
+  const mapping = {
+    'gemini-2.5-flash': 'Gemini 2.5 Flash',
+    'gemini-1.5-flash': 'Gemini 1.5 Flash',
+    'gemini-1.5-pro': 'Gemini 1.5 Pro',
+    'gemini-2.5-pro': 'Gemini 2.5 Pro',
+    'gemini-2.0-flash-exp': 'Gemini 2.0 Flash Exp',
+  };
+  if (mapping[modelId]) return mapping[modelId];
+  return modelId.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+};
 
 // ── Main App ──────────────────────────────────────────────────────────────────
 export default function App() {
-  const [messages,    setMessages]    = useState([])
-  const [input,       setInput]       = useState('')
-  const [isTyping,    setIsTyping]    = useState(false)
-  const [sessionId,   setSessionId]   = useState('session-' + Date.now())
-  const [profile,     setProfile]     = useState(null)
-  const [status,      setStatus]      = useState('connecting')
-  const [confirmed,   setConfirmed]   = useState(false)
-  const [briefing,    setBriefing]    = useState(null)
-  const [briefingOpen,setBriefingOpen]= useState(false)
+  const [messages, setMessages] = useState([])
+  const [input, setInput] = useState('')
+  const [isTyping, setIsTyping] = useState(false)
+  const [sessionId, setSessionId] = useState('session-' + Date.now())
+  const [profile, setProfile] = useState(null)
+  const [status, setStatus] = useState('connecting')
+  const [confirmed, setConfirmed] = useState(false)
+  const [briefing, setBriefing] = useState(null)
+  const [briefingOpen, setBriefingOpen] = useState(false)
   const [briefingLoading, setBriefingLoading] = useState(false)
-  const [integrations, setIntegrations] = useState([
-    { name: 'Gmail',    icon: '📧', connected: false },
-    { name: 'Calendar', icon: '📅', connected: false },
-    { name: 'Todoist',  icon: '✅', connected: false },
-  ])
+  const [googleConnected, setGoogleConnected] = useState(false)
+  const [ollamaStatus, setOllamaStatus] = useState(null) // null=loading, {connected, models}
+  const [activeTab, setActiveTab] = useState("chat") // "chat" | "system"
 
-  // ── NEW: Voice & Vision state ─────────────────────────────────────────────
-  const [voiceOn,        setVoiceOn]        = useState(false)
-  const [voiceStatus,    setVoiceStatus]    = useState('off')
-  const [voiceEmotion,   setVoiceEmotion]   = useState('neutral')
-  const [voiceEmoji,     setVoiceEmoji]     = useState('😐')
-  const [lastHeard,      setLastHeard]      = useState('')
-  const [visionResult,   setVisionResult]   = useState(null)   // modal data
-  const [visionLoading,  setVisionLoading]  = useState(null)   // 'screen'|'camera'|'ocr'|null
+  // Voice & Vision state
+  const [voiceOn, setVoiceOn] = useState(false)
+  const [voiceStatus, setVoiceStatus] = useState('off')
+  const [voiceEmotion, setVoiceEmotion] = useState('neutral')
+  const [voiceEmoji, setVoiceEmoji] = useState('😐')
+  const [lastHeard, setLastHeard] = useState('')
+  const [visionResult, setVisionResult] = useState(null)
+  const [visionLoading, setVisionLoading] = useState(null)
   const voicePollRef = useRef(null)
 
   const bottomRef = useRef(null)
-  const inputRef  = useRef(null)
+  const inputRef = useRef(null)
 
   // ── Load profile, health, auth status on mount ────────────────────────────
   useEffect(() => {
@@ -307,18 +303,31 @@ export default function App() {
           memories_used: 0,
           safety_status: 'ok'
         }])
-        return axios.get(`${API_BASE}/auth/status`)
+        // ✅ Use new /auth/google/status endpoint
+        return axios.get(`${API_BASE}/auth/google/status`)
       })
       .then(res => {
-        const googleConnected = res.data.google_connected
-        setIntegrations([
-          { name: 'Gmail',    icon: '📧', connected: googleConnected },
-          { name: 'Calendar', icon: '📅', connected: googleConnected },
-          { name: 'Todoist',  icon: '✅', connected: true },
-        ])
+        setGoogleConnected(res.data.connected)
+      })
+      .then(() => {
+        return axios.get(`${API_BASE}/control/system/ollama`)
+          .then(res => setOllamaStatus(res.data))
+          .catch(() => setOllamaStatus({ ollama: { connected: false, models: [], count: 0 }, gemini: { connected: false } }))
       })
       .catch(() => setStatus('offline'))
   }, [])
+
+  // ✅ Callback: re-check Google status when auth button reports connected
+  const handleGoogleAuthChange = (connected) => {
+    setGoogleConnected(connected)
+  }
+
+  // Derived integrations list from googleConnected state
+  const integrations = [
+    { name: 'Gmail', icon: '📧', connected: googleConnected },
+    { name: 'Calendar', icon: '📅', connected: googleConnected },
+    { name: 'Todoist', icon: '✅', connected: true },
+  ]
 
   // ── Auto-scroll ───────────────────────────────────────────────────────────
   useEffect(() => {
@@ -326,8 +335,6 @@ export default function App() {
   }, [messages, isTyping])
 
   // ── Voice pipeline polling ────────────────────────────────────────────────
-  // Polls /voice/status every second when voice is on
-  // Updates status badge, emotion, and shows transcriptions in chat
   useEffect(() => {
     if (!voiceOn) {
       clearInterval(voicePollRef.current)
@@ -341,42 +348,35 @@ export default function App() {
     voicePollRef.current = setInterval(async () => {
       try {
         const res = await axios.get(`${API_BASE}/voice/status`)
-        const d   = res.data
+        const d = res.data
 
         setVoiceStatus(d.status || 'listening')
         setVoiceEmotion(d.emotion || 'neutral')
         setVoiceEmoji(d.emotion_emoji || '😐')
 
-        // Show what ARIS heard as a user message in chat
         if (d.last_heard && d.last_heard !== prevHeard && d.status === 'thinking') {
           prevHeard = d.last_heard
           setLastHeard(d.last_heard)
           setMessages(prev => [...prev, {
-            id        : Date.now(),
-            role      : 'user',
-            text      : `🎙️ ${d.last_heard}`,
-            safety_status: 'ok',
-            fromVoice : true
+            id: Date.now(), role: 'user',
+            text: `🎙️ ${d.last_heard}`,
+            safety_status: 'ok', fromVoice: true
           }])
         }
 
-        // Show ARIS reply in chat when it comes back
         if (d.last_reply && d.last_reply !== prevReply && d.status === 'speaking') {
           prevReply = d.last_reply
           setMessages(prev => [...prev, {
-            id          : Date.now() + 1,
-            role        : 'aris',
-            text        : d.last_reply,
-            model_used  : 'voice',
-            memories_used: 0,
+            id: Date.now() + 1, role: 'aris',
+            text: d.last_reply,
+            model_used: 'voice', memories_used: 0,
             safety_status: 'ok',
-            emotion     : d.emotion,
-            emotionEmoji: d.emotion_emoji,
-            fromVoice   : true
+            emotion: d.emotion, emotionEmoji: d.emotion_emoji,
+            fromVoice: true
           }])
         }
       } catch {
-        // Backend might be busy — ignore poll errors
+        // ignore poll errors
       }
     }, 1000)
 
@@ -408,55 +408,40 @@ export default function App() {
       let res, text, image
 
       if (type === 'screen') {
-        res   = await axios.get(`${API_BASE}/vision/screen`)
-        text  = res.data.description
-        image = null
-        // Add to chat
+        res = await axios.get(`${API_BASE}/vision/screen`)
+        text = res.data.description
         setMessages(prev => [...prev, {
           id: Date.now(), role: 'aris',
           text: `🖥️ Screen: ${text}`,
-          model_used: res.data.model_used,
-          memories_used: 0, safety_status: 'ok',
-          vision_result: true, vision_type: 'screen',
-          vision_image: res.data.screenshot
+          model_used: res.data.model_used, memories_used: 0, safety_status: 'ok',
+          vision_result: true, vision_type: 'screen', vision_image: res.data.screenshot
         }])
-
       } else if (type === 'camera') {
-        res   = await axios.get(`${API_BASE}/vision/camera`)
-        text  = res.data.description
-        // Add to chat
+        res = await axios.get(`${API_BASE}/vision/camera`)
+        text = res.data.description
         setMessages(prev => [...prev, {
           id: Date.now(), role: 'aris',
           text: `📷 Camera: ${text}`,
-          model_used: res.data.model_used,
-          memories_used: 0, safety_status: 'ok',
-          vision_result: true, vision_type: 'camera',
-          vision_image: res.data.image_path
+          model_used: res.data.model_used, memories_used: 0, safety_status: 'ok',
+          vision_result: true, vision_type: 'camera', vision_image: res.data.image_path
         }])
-
       } else if (type === 'ocr') {
-        res  = await axios.get(`${API_BASE}/vision/ocr?source=screen&mode=summarize`)
+        res = await axios.get(`${API_BASE}/vision/ocr?source=screen&mode=summarize`)
         text = res.data.text
-        // Add to chat
         setMessages(prev => [...prev, {
           id: Date.now(), role: 'aris',
           text: `📝 OCR: ${text}`,
-          model_used: res.data.model_used,
-          memories_used: 0, safety_status: 'ok',
+          model_used: res.data.model_used, memories_used: 0, safety_status: 'ok',
           vision_result: true, vision_type: 'ocr'
         }])
       }
 
-      // Show result in modal
       setVisionResult({
-        type,
-        text,
-        image,
-        resolution  : res.data.resolution,
+        type, text, image,
+        resolution: res.data.resolution,
         elapsed_secs: res.data.elapsed_secs,
-        model_used  : res.data.model_used,
+        model_used: res.data.model_used,
       })
-
     } catch (err) {
       alert(`Vision error: ${err.response?.data?.detail || err.message}`)
     } finally {
@@ -483,8 +468,7 @@ export default function App() {
       })
       const d = res.data
       setMessages(prev => [...prev, {
-        id: Date.now() + 1,
-        role: 'aris',
+        id: Date.now() + 1, role: 'aris',
         text: d.response,
         model_used: d.model_used,
         memories_used: d.memories_used,
@@ -497,8 +481,7 @@ export default function App() {
       }
     } catch (err) {
       setMessages(prev => [...prev, {
-        id: Date.now() + 1,
-        role: 'aris',
+        id: Date.now() + 1, role: 'aris',
         text: '⚠️ Connection error. Please check the backend is running.',
         safety_status: 'ok'
       }])
@@ -515,7 +498,7 @@ export default function App() {
       const res = await axios.get(`${API_BASE}/briefing`)
       setBriefing(res.data)
       setBriefingOpen(true)
-    } catch (err) {
+    } catch {
       alert('Failed to load briefing. Make sure the backend is running.')
     } finally {
       setBriefingLoading(false)
@@ -524,10 +507,10 @@ export default function App() {
 
   // ── Quick actions ─────────────────────────────────────────────────────────
   const quickActions = [
-    { label: '📧 Check Email',   message: 'What emails do I have?' },
-    { label: '📅 My Schedule',   message: "What's on my calendar today?" },
-    { label: '✅ My Tasks',      message: 'Show me my tasks' },
-    { label: '👥 Reach Out',     message: "Who haven't I talked to recently?" },
+    { label: '📧 Check Email', message: 'What emails do I have?' },
+    { label: '📅 My Schedule', message: "What's on my calendar today?" },
+    { label: '✅ My Tasks', message: 'Show me my tasks' },
+    { label: '👥 Reach Out', message: "Who haven't I talked to recently?" },
   ]
 
   // ── New chat ──────────────────────────────────────────────────────────────
@@ -535,19 +518,15 @@ export default function App() {
     const newId = 'session-' + Date.now()
     setSessionId(newId)
     setMessages([{
-      id: Date.now(),
-      role: 'aris',
+      id: Date.now(), role: 'aris',
       text: `New session started. How can I help you, ${profile?.preferred_name || 'there'}?`,
-      model_used: null,
-      memories_used: 0,
-      safety_status: 'ok'
+      model_used: null, memories_used: 0, safety_status: 'ok'
     }])
     setInput('')
     setConfirmed(false)
     inputRef.current?.focus()
   }
 
-  // ── Key handler ───────────────────────────────────────────────────────────
   const handleKey = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
@@ -559,12 +538,10 @@ export default function App() {
   return (
     <div className="app">
 
-      {/* Briefing modal */}
       {briefingOpen && (
         <BriefingModal briefing={briefing} onClose={() => setBriefingOpen(false)} />
       )}
 
-      {/* Vision result modal */}
       {visionResult && (
         <VisionModal result={visionResult} onClose={() => setVisionResult(null)} />
       )}
@@ -579,11 +556,8 @@ export default function App() {
           </div>
         </div>
 
-        <button className="new-chat-btn" onClick={newChat}>
-          + New Chat
-        </button>
+        <button className="new-chat-btn" onClick={newChat}>+ New Chat</button>
 
-        {/* Morning briefing button */}
         <button
           className="briefing-btn"
           onClick={fetchBriefing}
@@ -592,7 +566,6 @@ export default function App() {
           {briefingLoading ? '⏳ Loading...' : '🌅 Morning Briefing'}
         </button>
 
-        {/* ── NEW: Voice toggle in sidebar ── */}
         <button
           className={`voice-toggle-btn ${voiceOn ? 'voice-on' : 'voice-off'}`}
           onClick={toggleVoice}
@@ -601,7 +574,6 @@ export default function App() {
           {voiceOn ? '🎙️ Voice On' : '🎙️ Voice Off'}
         </button>
 
-        {/* Voice status when on */}
         {voiceOn && (
           <div className="sidebar-voice-status">
             <VoiceStatusBadge
@@ -618,7 +590,12 @@ export default function App() {
           </div>
         )}
 
-        {/* Integration status */}
+        {/* ✅ Google Auth Button — live status + connect/disconnect */}
+        <div className="sidebar-section">
+          <p className="sidebar-label">Google Account</p>
+          <GoogleAuthButton onAuthChange={handleGoogleAuthChange} />
+        </div>
+
         <div className="sidebar-section">
           <p className="sidebar-label">Integrations</p>
           <div className="integrations-list">
@@ -633,9 +610,76 @@ export default function App() {
 
         <div className="sidebar-section">
           <p className="sidebar-label">Status</p>
+
+          {/* Backend pill */}
           <div className={`status-dot ${status}`}>
             <span />
             {status === 'online' ? 'Backend Online' : 'Backend Offline'}
+          </div>
+
+          {/* ── Gemini block ── */}
+          <div className="llm-group">
+            <div className="llm-group-header">
+              <span className="llm-group-icon">✦</span>
+              <span className="llm-group-name">Gemini</span>
+              <span className="llm-group-dot connected" />
+            </div>
+            <div className="llm-pills">
+              {ollamaStatus?.gemini ? (
+                <>
+                  <span className="llm-pill gemini" title="Primary / Fallback model">
+                    {ollamaStatus.gemini.model?.replace('gemini-', '').replace('-', ' ')}
+                  </span>
+                </>
+              ) : (
+                <span className="llm-pill-loading">loading…</span>
+              )}
+            </div>
+          </div>
+
+          {/* ── Ollama block ── */}
+          <div className="llm-group">
+            <div className="llm-group-header">
+              <span className="llm-group-icon">🦙</span>
+              <span className="llm-group-name">Ollama</span>
+              <span className={`llm-group-dot ${ollamaStatus?.ollama?.connected ? 'connected' : 'disconnected'}`} />
+            </div>
+
+            {ollamaStatus === null && (
+              <span className="llm-pill-loading">checking…</span>
+            )}
+
+            {ollamaStatus?.ollama?.connected === false && (
+              <span className="llm-pill-offline">Offline</span>
+            )}
+
+            {ollamaStatus?.ollama?.connected && (
+              <div className="llm-pills">
+                {ollamaStatus.ollama.models.map(m => {
+                  const name     = m.split(':')[0]
+                  const isChat   = name === ollamaStatus.gemini?.chat_model?.split(':')[0]
+                  const isWrite  = name === ollamaStatus.gemini?.write_model?.split(':')[0]
+                  const isReason = name === ollamaStatus.gemini?.reason_model?.split(':')[0]
+                  const role     = isChat ? 'chat' : isWrite ? 'write' : isReason ? 'reason' : null
+
+                  return (
+                    <span
+                      key={m}
+                      className={`llm-pill ollama ${role || ''}`}
+                      title={
+                        role === 'chat'   ? 'Used for: chat & reads' :
+                        role === 'write'  ? 'Used for: emails & summaries' :
+                        role === 'reason' ? 'Used for: reasoning & scheduling' :
+                        name
+                      }
+                    >
+                      {name}
+                      {role && <span className="llm-pill-role">{role}</span>}
+                    </span>
+                  )
+                })}
+              </div>
+            )}
           </div>
         </div>
 
@@ -665,13 +709,11 @@ export default function App() {
       {/* ── Chat area ── */}
       <main className="chat-area">
 
-        {/* Header */}
         <header className="chat-header">
           <div>
             <h2>ARIS</h2>
             <p>Autonomous Reasoning &amp; Intelligence System</p>
           </div>
-          {/* Voice status badge in header when voice is on */}
           {voiceOn && (
             <VoiceStatusBadge
               status={voiceStatus}
@@ -684,97 +726,115 @@ export default function App() {
           </div>
         </header>
 
-        {/* Quick action buttons */}
-        <div className="quick-actions">
-          {quickActions.map(({ label, message }) => (
-            <button
-              key={label}
-              className="quick-btn"
-              onClick={() => sendMessage(message)}
-              disabled={isTyping}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-
-        {/* ── NEW: Vision action bar ── */}
-        <div className="vision-bar">
-          <span className="vision-bar-label">👁️ Vision</span>
+        {/* Tab switcher */}
+        <div className="tab-bar">
           <button
-            className={`vision-btn ${visionLoading === 'screen' ? 'loading' : ''}`}
-            onClick={() => runVision('screen')}
-            disabled={!!visionLoading}
-            title="Capture and describe your screen"
+            className={`tab-btn ${activeTab === "chat" ? "active" : ""}`}
+            onClick={() => setActiveTab("chat")}
           >
-            {visionLoading === 'screen' ? '⏳' : '🖥️'} See Screen
+            💬 Chat
           </button>
           <button
-            className={`vision-btn ${visionLoading === 'camera' ? 'loading' : ''}`}
-            onClick={() => runVision('camera')}
-            disabled={!!visionLoading}
-            title="Capture and describe camera view"
+            className={`tab-btn ${activeTab === "system" ? "active" : ""}`}
+            onClick={() => setActiveTab("system")}
           >
-            {visionLoading === 'camera' ? '⏳' : '📷'} Use Camera
-          </button>
-          <button
-            className={`vision-btn ${visionLoading === 'ocr' ? 'loading' : ''}`}
-            onClick={() => runVision('ocr')}
-            disabled={!!visionLoading}
-            title="Read text from screen"
-          >
-            {visionLoading === 'ocr' ? '⏳' : '📝'} Scan Text
+            🖥️ System
           </button>
         </div>
 
-        {/* Messages */}
-        <div className="messages-container">
-          {messages.map(msg => <Message key={msg.id} msg={msg} />)}
-          {isTyping && <TypingIndicator />}
-          <div ref={bottomRef} />
-        </div>
+        {/* System dashboard — shown when system tab active */}
+        <SystemDashboard visible={activeTab === "system"} />
 
-        {/* Confirm banner */}
-        {confirmed && (
-          <div className="confirm-banner">
-            <span>⚠️ This action needs confirmation.</span>
-            <button onClick={() => sendMessage(null, true)} className="confirm-btn">
-              Yes, proceed
-            </button>
-            <button onClick={() => { setConfirmed(false); setInput('') }} className="cancel-btn">
-              Cancel
-            </button>
-          </div>
+        {/* Wrap existing chat content so it hides when system tab is open */}
+        {activeTab === "chat" && (
+          <>
+            <div className="quick-actions">
+              {quickActions.map(({ label, message }) => (
+                <button
+                  key={label}
+                  className="quick-btn"
+                  onClick={() => sendMessage(message)}
+                  disabled={isTyping}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            <div className="vision-bar">
+              <span className="vision-bar-label">👁️ Vision</span>
+              <button
+                className={`vision-btn ${visionLoading === 'screen' ? 'loading' : ''}`}
+                onClick={() => runVision('screen')}
+                disabled={!!visionLoading}
+                title="Capture and describe your screen"
+              >
+                {visionLoading === 'screen' ? '⏳' : '🖥️'} See Screen
+              </button>
+              <button
+                className={`vision-btn ${visionLoading === 'camera' ? 'loading' : ''}`}
+                onClick={() => runVision('camera')}
+                disabled={!!visionLoading}
+                title="Capture and describe camera view"
+              >
+                {visionLoading === 'camera' ? '⏳' : '📷'} Use Camera
+              </button>
+              <button
+                className={`vision-btn ${visionLoading === 'ocr' ? 'loading' : ''}`}
+                onClick={() => runVision('ocr')}
+                disabled={!!visionLoading}
+                title="Read text from screen"
+              >
+                {visionLoading === 'ocr' ? '⏳' : '📝'} Scan Text
+              </button>
+            </div>
+
+            <div className="messages-container">
+              {messages.map(msg => <Message key={msg.id} msg={msg} />)}
+              {isTyping && <TypingIndicator />}
+              <div ref={bottomRef} />
+            </div>
+
+            {confirmed && (
+              <div className="confirm-banner">
+                <span>⚠️ This action needs confirmation.</span>
+                <button onClick={() => sendMessage(null, true)} className="confirm-btn">
+                  Yes, proceed
+                </button>
+                <button onClick={() => { setConfirmed(false); setInput('') }} className="cancel-btn">
+                  Cancel
+                </button>
+              </div>
+            )}
+
+            <div className="input-area">
+              <textarea
+                ref={inputRef}
+                className="input-box"
+                placeholder="Message ARIS…"
+                value={input}
+                onChange={e => setInput(e.target.value)}
+                onKeyDown={handleKey}
+                rows={1}
+              />
+              <button
+                className={`mic-btn ${voiceOn ? 'mic-on' : ''}`}
+                onClick={toggleVoice}
+                title={voiceOn ? 'Stop listening' : 'Start voice mode'}
+              >
+                🎙️
+              </button>
+              <button
+                className="send-btn"
+                onClick={() => sendMessage()}
+                disabled={!input.trim() || isTyping}
+              >
+                {isTyping ? '…' : '↑'}
+              </button>
+            </div>
+            <p className="input-hint">Enter to send · Shift+Enter for new line · 🎙️ for voice</p>
+          </>
         )}
-
-        {/* Input area */}
-        <div className="input-area">
-          <textarea
-            ref={inputRef}
-            className="input-box"
-            placeholder="Message ARIS…"
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={handleKey}
-            rows={1}
-          />
-          {/* ── NEW: Mic button next to send ── */}
-          <button
-            className={`mic-btn ${voiceOn ? 'mic-on' : ''}`}
-            onClick={toggleVoice}
-            title={voiceOn ? 'Stop listening' : 'Start voice mode'}
-          >
-            🎙️
-          </button>
-          <button
-            className="send-btn"
-            onClick={() => sendMessage()}
-            disabled={!input.trim() || isTyping}
-          >
-            {isTyping ? '…' : '↑'}
-          </button>
-        </div>
-        <p className="input-hint">Enter to send · Shift+Enter for new line · 🎙️ for voice</p>
       </main>
     </div>
   )

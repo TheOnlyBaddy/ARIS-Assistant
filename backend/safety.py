@@ -1,55 +1,133 @@
 """
-ARIS Safety Guardrails
-Protects against harmful requests and enforces confirmation
-before destructive actions.
+ARIS Safety Guardrails — Phase 4
+Protects against harmful requests, enforces confirmation before
+destructive control actions, and logs all control actions to SQLite.
 """
 
 import os
 import re
+import sqlite3
+from datetime import datetime
 from enum import Enum
+from pathlib import Path
 
 # ─── TRUST LEVELS ──────────────────────────────────────────────────────────────
 
 class TrustLevel(str, Enum):
-    AUTO = "auto"   # ARIS acts immediately, no confirmation needed
-    ASK  = "ask"    # ARIS asks for confirmation before anything destructive
+    AUTO = "auto"   # ARIS acts immediately
+    ASK  = "ask"    # ARIS asks before destructive actions
 
-# Load from env, default to "ask" (safer)
 TRUST_LEVEL = TrustLevel(os.getenv("ARIS_TRUST_LEVEL", "ask"))
 
+# ─── AUDIT LOG SETUP ───────────────────────────────────────────────────────────
+
+BASE_DIR  = os.path.dirname(os.path.abspath(__file__))
+AUDIT_DB  = os.path.join(BASE_DIR, "audit_log.db")
+
+def _init_audit_db():
+    conn = sqlite3.connect(AUDIT_DB)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS control_audit (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp   TEXT    NOT NULL,
+            action      TEXT    NOT NULL,
+            params      TEXT,
+            result      TEXT,
+            confirmed   INTEGER DEFAULT 0,
+            blocked     INTEGER DEFAULT 0
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+_init_audit_db()
+
+
+def log_control_action(action: str, params: str = "", result: str = "",
+                        confirmed: bool = False, blocked: bool = False):
+    """Write every control action to the audit log."""
+    try:
+        conn = sqlite3.connect(AUDIT_DB)
+        conn.execute("""
+            INSERT INTO control_audit (timestamp, action, params, result, confirmed, blocked)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            action,
+            str(params)[:500],
+            str(result)[:500],
+            int(confirmed),
+            int(blocked)
+        ))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"[Audit] Log failed: {e}")
+
+
+def get_audit_log(limit: int = 50) -> list[dict]:
+    """Return recent audit log entries, newest first."""
+    try:
+        conn = sqlite3.connect(AUDIT_DB)
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute("""
+            SELECT * FROM control_audit
+            ORDER BY id DESC LIMIT ?
+        """, (limit,)).fetchall()
+        conn.close()
+        return [dict(r) for r in rows]
+    except Exception as e:
+        print(f"[Audit] Read failed: {e}")
+        return []
+
 # ─── BLOCKED CONTENT PATTERNS ──────────────────────────────────────────────────
-# These patterns catch clearly harmful requests.
-# ARIS will refuse these regardless of trust level.
 
 BLOCKED_PATTERNS = [
-    # Violence
     r"\b(how to (make|build|create) a (bomb|weapon|explosive))\b",
     r"\b(instructions for (killing|harming|hurting) (someone|people|a person))\b",
-    # Self-harm
     r"\b(how to (kill|hurt) (myself|yourself))\b",
     r"\b(suicide (method|instructions|how to))\b",
-    # Illegal activity
     r"\b(how to (hack|crack|break into) (a system|an account|a network))\b",
     r"\b(make (drugs|meth|cocaine|heroin))\b",
-    # Sensitive data extraction
     r"\b(ignore (all )?(previous |prior )?(instructions|prompts))\b",
     r"\b(jailbreak|dan mode|developer mode|ignore your (training|rules))\b",
     r"\b(reveal your (system prompt|instructions|prompt))\b",
 ]
 
-# Compile patterns once for performance
 COMPILED_PATTERNS = [re.compile(p, re.IGNORECASE) for p in BLOCKED_PATTERNS]
 
-# ─── DESTRUCTIVE ACTION KEYWORDS ───────────────────────────────────────────────
-# These are actions that modify or delete data.
-# In "ask" mode, ARIS will require confirmation before proceeding.
+# ─── DESTRUCTIVE KEYWORDS (chat messages) ─────────────────────────────────────
 
 DESTRUCTIVE_KEYWORDS = [
     "delete", "clear", "remove", "reset", "erase",
     "wipe", "destroy", "purge", "drop", "overwrite"
 ]
 
-# ─── SAFETY CHECK RESULTS ──────────────────────────────────────────────────────
+# ─── CONTROL ACTION SAFETY ─────────────────────────────────────────────────────
+# These control actions require explicit confirmation before executing.
+# Maps action name → human-readable warning message.
+
+DANGEROUS_CONTROL_ACTIONS = {
+    "delete_file"    : "delete a file permanently",
+    "delete_folder"  : "delete an entire folder and all its contents",
+    "kill_process"   : "force-kill a running process",
+    "close_window"   : "close an application window",
+    "format_drive"   : "format a drive",
+    "write_file"     : "overwrite file contents",
+    "run_command"    : "execute a system command",
+}
+
+# These actions are always logged but never need confirmation
+LOGGED_CONTROL_ACTIONS = {
+    "open_app", "take_screenshot", "clipboard_write",
+    "move_mouse", "click", "type_text", "hotkey",
+    "open_url", "search_google", "send_notification",
+    "create_file", "create_folder", "rename", "move", "copy",
+    "list_directory", "read_file", "list_processes",
+    "get_stats", "get_cpu", "get_ram", "get_disk",
+}
+
+# ─── SAFETY RESULT ─────────────────────────────────────────────────────────────
 
 class SafetyResult:
     def __init__(self, is_safe: bool, reason: str = "", requires_confirmation: bool = False):
@@ -60,22 +138,16 @@ class SafetyResult:
     def __repr__(self):
         return f"<SafetyResult safe={self.is_safe} confirm={self.requires_confirmation}>"
 
-
-# ─── MAIN SAFETY CHECK ─────────────────────────────────────────────────────────
+# ─── MAIN SAFETY CHECK (chat messages) ────────────────────────────────────────
 
 def check_message_safety(message: str) -> SafetyResult:
-    """
-    Run safety checks on an incoming user message.
-    Returns a SafetyResult indicating:
-      - is_safe: whether ARIS should respond at all
-      - requires_confirmation: whether to ask user to confirm first
-      - reason: explanation if blocked or needs confirmation
-    """
+    """Run safety checks on an incoming user message."""
     message_lower = message.lower().strip()
 
-    # ── Check 1: Hard blocks (always refuse) ──
+    # Hard blocks
     for pattern in COMPILED_PATTERNS:
         if pattern.search(message_lower):
+            log_control_action("blocked_message", message[:200], "hard_block", blocked=True)
             return SafetyResult(
                 is_safe=False,
                 reason=(
@@ -85,7 +157,7 @@ def check_message_safety(message: str) -> SafetyResult:
                 )
             )
 
-    # ── Check 2: Destructive actions (require confirmation in ASK mode) ──
+    # Destructive keywords in ASK mode
     if TRUST_LEVEL == TrustLevel.ASK:
         for keyword in DESTRUCTIVE_KEYWORDS:
             if keyword in message_lower:
@@ -98,15 +170,62 @@ def check_message_safety(message: str) -> SafetyResult:
                     )
                 )
 
-    # ── All checks passed ──
+    return SafetyResult(is_safe=True)
+
+
+# ─── CONTROL ACTION SAFETY CHECK ──────────────────────────────────────────────
+
+def check_control_action(action: str, params: dict = None,
+                          confirmed: bool = False) -> SafetyResult:
+    """
+    Check if a control action is safe to execute.
+    Dangerous actions require confirmed=True.
+    All actions are logged to the audit DB.
+    """
+    params = params or {}
+
+    # Always log the attempt
+    log_control_action(
+        action    = action,
+        params    = str(params),
+        result    = "pending",
+        confirmed = confirmed,
+        blocked   = False
+    )
+
+    # Dangerous actions need confirmation
+    if action in DANGEROUS_CONTROL_ACTIONS and TRUST_LEVEL == TrustLevel.ASK:
+        if not confirmed:
+            description = DANGEROUS_CONTROL_ACTIONS[action]
+            return SafetyResult(
+                is_safe=True,
+                requires_confirmation=True,
+                reason=(
+                    f"⚠️ ARIS wants to **{description}**.\n\n"
+                    f"Parameters: `{params}`\n\n"
+                    f"Reply **'yes, confirmed'** to proceed or **'cancel'** to abort."
+                )
+            )
+
+    # Log as confirmed/executed
+    log_control_action(
+        action    = action,
+        params    = str(params),
+        result    = "executed",
+        confirmed = confirmed or action not in DANGEROUS_CONTROL_ACTIONS,
+        blocked   = False
+    )
+
     return SafetyResult(is_safe=True)
 
 
 def get_safety_config() -> dict:
     """Return current safety configuration."""
     return {
-        "trust_level": TRUST_LEVEL.value,
-        "blocked_pattern_count": len(BLOCKED_PATTERNS),
-        "destructive_keywords": DESTRUCTIVE_KEYWORDS,
-        "confirmation_required_for_destructive": TRUST_LEVEL == TrustLevel.ASK
+        "trust_level"                          : TRUST_LEVEL.value,
+        "blocked_pattern_count"                : len(BLOCKED_PATTERNS),
+        "destructive_keywords"                 : DESTRUCTIVE_KEYWORDS,
+        "dangerous_control_actions"            : list(DANGEROUS_CONTROL_ACTIONS.keys()),
+        "confirmation_required_for_destructive": TRUST_LEVEL == TrustLevel.ASK,
+        "audit_log_path"                       : AUDIT_DB,
     }
