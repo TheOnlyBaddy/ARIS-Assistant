@@ -2,16 +2,16 @@
 import { useState, useEffect, useRef } from "react"
 import axios from "axios"
 
-const API_BASE = "http://localhost:8000"
+const API_BASE = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
+  ? "http://localhost:8000"
+  : `http://${window.location.hostname}:8000`
 
 // ── Circular gauge ────────────────────────────────────────────────────────────
-function Gauge({ value, max = 100, label, color, unit = "%" }) {
+function Gauge({ value, max = 100, label, color, unit = "%", subtitle, tooltip }) {
     const pct = Math.min((value / max) * 100, 100)
     const radius = 36
     const circ = 2 * Math.PI * radius
     const offset = circ - (pct / 100) * circ
-
-    const col = pct > 85 ? "#ef4444" : pct > 60 ? "#f59e0b" : color
 
     return (
         <div className="gauge-wrap">
@@ -21,7 +21,7 @@ function Gauge({ value, max = 100, label, color, unit = "%" }) {
                     fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="8" />
                 {/* Fill */}
                 <circle cx="45" cy="45" r={radius}
-                    fill="none" stroke={col} strokeWidth="8"
+                    fill="none" stroke={color} strokeWidth="8"
                     strokeDasharray={circ} strokeDashoffset={offset}
                     strokeLinecap="round"
                     transform="rotate(-90 45 45)"
@@ -30,10 +30,12 @@ function Gauge({ value, max = 100, label, color, unit = "%" }) {
                 {/* Value */}
                 <text x="45" y="45" textAnchor="middle" dominantBaseline="middle"
                     fill="#fff" fontSize="13" fontWeight="700">
-                    {Math.round(value)}{unit}
+                    {unit.includes("GB") ? value.toFixed(1) : Math.round(value)}{unit}
                 </text>
             </svg>
             <p className="gauge-label">{label}</p>
+            {subtitle && <p className="gauge-sub" style={{ fontSize: "10px", color: "#888", marginTop: "-2px", marginBottom: "0" }}>{subtitle}</p>}
+            {tooltip}
         </div>
     )
 }
@@ -44,7 +46,7 @@ function DiskBar({ disk }) {
     return (
         <div className="disk-bar-wrap">
             <div className="disk-bar-header">
-                <span className="disk-drive">{disk.device}</span>
+                <span className="disk-drive">{disk.device} ({disk.type || "SSD"})</span>
                 <span className="disk-pct" style={{ color: col }}>{disk.percent}%</span>
             </div>
             <div className="disk-track">
@@ -57,6 +59,18 @@ function DiskBar({ disk }) {
     )
 }
 
+// ── Network Icon Helper ───────────────────────────────────────────────────────
+const getNetIcon = (type) => {
+    if (!type) return "🌐";
+    const t = type.toLowerCase();
+    if (t.includes("wi-fi") || t.includes("wifi")) return "📶";
+    if (t.includes("ethernet")) return "🔌";
+    if (t.includes("tether") || t.includes("ndis") || t.includes("usb")) return "📱";
+    if (t.includes("bluetooth")) return "🔵";
+    if (t.includes("disconnected")) return "⚠️";
+    return "🌐";
+}
+
 // ── Process row ───────────────────────────────────────────────────────────────
 function ProcessRow({ proc }) {
     const cpuCol = proc.cpu > 50 ? "#ef4444" : proc.cpu > 20 ? "#f59e0b" : "#6ee7b7"
@@ -66,6 +80,8 @@ function ProcessRow({ proc }) {
             <span className="proc-name">{proc.name}</span>
             <span className="proc-cpu" style={{ color: cpuCol }}>{proc.cpu}%</span>
             <span className="proc-ram">{proc.ram_mb} MB</span>
+            <span className="proc-disk">{proc.disk_mbs > 0 ? `${proc.disk_mbs} MB/s` : "0 MB/s"}</span>
+            <span className="proc-net">{proc.net_mbps > 0 ? `${proc.net_mbps} Mbps` : "0 Mbps"}</span>
         </div>
     )
 }
@@ -73,7 +89,12 @@ function ProcessRow({ proc }) {
 // ── Main Dashboard ────────────────────────────────────────────────────────────
 export default function SystemDashboard({ visible }) {
     const [stats, setStats] = useState(null)
-    const [processes, setProcesses] = useState([])
+    const [apps, setApps] = useState([])
+    const [background, setBackground] = useState([])
+    const [totalApps, setTotalApps] = useState(0)
+    const [totalBg, setTotalBg] = useState(0)
+    const [appsExpanded, setAppsExpanded] = useState(true)
+    const [bgExpanded, setBgExpanded] = useState(true)
     const [loading, setLoading] = useState(true)
     const [lastUpdate, setLastUpdate] = useState(null)
     const [procSort, setProcSort] = useState("cpu")
@@ -89,7 +110,10 @@ export default function SystemDashboard({ visible }) {
                 )
             ])
             setStats(statsRes.data)
-            setProcesses(procRes.data.processes || [])
+            setApps(procRes.data.apps || [])
+            setBackground(procRes.data.background || [])
+            setTotalApps(procRes.data.total_apps || 0)
+            setTotalBg(procRes.data.total_background || 0)
             setLastUpdate(new Date().toLocaleTimeString())
             setLoading(false)
         } catch (e) {
@@ -101,7 +125,7 @@ export default function SystemDashboard({ visible }) {
     useEffect(() => {
         if (!visible) return
         fetchStats()
-        intervalRef.current = setInterval(fetchStats, 3000)
+        intervalRef.current = setInterval(fetchStats, 500)
         return () => clearInterval(intervalRef.current)
     }, [visible, procSort])
 
@@ -135,35 +159,132 @@ export default function SystemDashboard({ visible }) {
 
             {/* ── Gauges row ── */}
             <div className="sys-gauges">
-                <Gauge value={stats.cpu.percent} label="CPU" color="#6366f1" />
-                <Gauge value={stats.ram.percent} label="RAM" color="#10b981" />
+                <Gauge 
+                    value={stats.cpu.percent} 
+                    label="CPU" 
+                    color="#6366f1" 
+                    subtitle={stats.cpu.freq_mhz ? `${(stats.cpu.freq_mhz / 1000).toFixed(2)} GHz` : undefined}
+                    tooltip={
+                        <div className="gauge-tooltip align-left" style={{ '--accent-color': '#6366f1' }}>
+                            <div className="gauge-tooltip-title">CPU Specifications</div>
+                            <div className="gauge-tooltip-row">
+                                <span className="tooltip-key">Logical Cores</span>
+                                <span className="tooltip-val">{stats.cpu.cores_logical}</span>
+                            </div>
+                            <div className="gauge-tooltip-row">
+                                <span className="tooltip-key">Physical Cores</span>
+                                <span className="tooltip-val">{stats.cpu.cores_physical}</span>
+                            </div>
+                            <div className="gauge-tooltip-row">
+                                <span className="tooltip-key">Active Speed</span>
+                                <span className="tooltip-val">{(stats.cpu.freq_mhz / 1000).toFixed(2)} GHz</span>
+                            </div>
+                        </div>
+                    }
+                />
+                <Gauge 
+                    value={stats.ram.percent} 
+                    label="RAM" 
+                    color="#10b981" 
+                    tooltip={
+                        <div className="gauge-tooltip" style={{ '--accent-color': '#10b981' }}>
+                            <div className="gauge-tooltip-title">Memory Details</div>
+                            <div className="gauge-tooltip-row">
+                                <span className="tooltip-key">Used</span>
+                                <span className="tooltip-val">{stats.ram.used_gb} GB</span>
+                            </div>
+                            <div className="gauge-tooltip-row">
+                                <span className="tooltip-key">Available</span>
+                                <span className="tooltip-val">{stats.ram.free_gb} GB</span>
+                            </div>
+                            <div className="gauge-tooltip-row">
+                                <span className="tooltip-key">Total Size</span>
+                                <span className="tooltip-val">{stats.ram.total_gb} GB</span>
+                            </div>
+                        </div>
+                    }
+                />
+                {stats.gpus && stats.gpus.map((gpu, idx) => {
+                    const isLastGpu = idx === stats.gpus.length - 1 && !stats.battery
+                    return (
+                        <Gauge 
+                            key={`gpu-gauge-${idx}`}
+                            value={gpu.percent} 
+                            label={gpu.type === "integrated" ? "Integrated GPU" : "Discrete GPU"} 
+                            color="#ec4899" 
+                            subtitle={gpu.temp !== null ? `${gpu.temp}°C` : undefined}
+                            tooltip={
+                                <div className={`gauge-tooltip ${isLastGpu ? 'align-right' : ''}`} style={{ '--accent-color': '#ec4899' }}>
+                                    <div className="gauge-tooltip-title">{gpu.name}</div>
+                                    <div className="gauge-tooltip-row">
+                                        <span className="tooltip-key">Type</span>
+                                        <span className="tooltip-val">{gpu.type === "integrated" ? "Integrated" : "Discrete"}</span>
+                                    </div>
+                                    {gpu.total_vram && (
+                                        <div className="gauge-tooltip-row">
+                                            <span className="tooltip-key">{gpu.type === "integrated" ? "Shared VRAM" : "Dedicated VRAM"}</span>
+                                            <span className="tooltip-val">{gpu.used_vram} / {gpu.total_vram} GB</span>
+                                        </div>
+                                    )}
+                                    {gpu.temp !== null && (
+                                        <div className="gauge-tooltip-row">
+                                            <span className="tooltip-key">Temperature</span>
+                                            <span className="tooltip-val">{gpu.temp}°C</span>
+                                        </div>
+                                    )}
+                                </div>
+                            }
+                        />
+                    )
+                })}
                 {stats.battery && (
                     <Gauge
                         value={stats.battery.percent}
                         label={stats.battery.plugged_in ? "🔌 Battery" : "🔋 Battery"}
                         color={stats.battery.plugged_in ? "#10b981" : "#f59e0b"}
+                        tooltip={
+                            <div className="gauge-tooltip align-right" style={{ '--accent-color': stats.battery.plugged_in ? '#10b981' : '#f59e0b' }}>
+                                <div className="gauge-tooltip-title">Battery Status</div>
+                                <div className="gauge-tooltip-row">
+                                    <span className="tooltip-key">Charge</span>
+                                    <span className="tooltip-val">{stats.battery.percent}%</span>
+                                </div>
+                                <div className="gauge-tooltip-row">
+                                    <span className="tooltip-key">Status</span>
+                                    <span className="tooltip-val">{stats.battery.status}</span>
+                                </div>
+                                {stats.battery.plugged_in ? (
+                                    <div className="gauge-tooltip-row">
+                                        <span className="tooltip-key">Power Source</span>
+                                        <span className="tooltip-val" style={{ color: '#10b981' }}>AC Power</span>
+                                    </div>
+                                ) : (
+                                    <div className="gauge-tooltip-row">
+                                        <span className="tooltip-key">Time Left</span>
+                                        <span className="tooltip-val">{stats.battery.time_left}</span>
+                                    </div>
+                                )}
+                            </div>
+                        }
                     />
                 )}
-                <div className="gauge-wrap">
-                    <div className="sys-text-stat">
-                        <p className="sys-stat-val">{stats.ram.used_gb}<span>GB</span></p>
-                        <p className="sys-stat-sub">of {stats.ram.total_gb} GB RAM</p>
-                    </div>
-                    <p className="gauge-label">Memory</p>
-                </div>
             </div>
 
             {/* ── Network ── */}
             <div className="sys-section">
                 <p className="sys-section-title">Network</p>
-                <div className="sys-network">
+                <div className="sys-network" style={{ display: "flex", gap: "24px", flexWrap: "wrap" }}>
+                    <div className="net-stat">
+                        <span className="net-icon">{getNetIcon(stats.network.type)}</span>
+                        <span>Connection: <strong>{stats.network.type || "Unknown"}</strong>{stats.network.name && <span style={{ color: "#777", fontSize: "11px" }}> ({stats.network.name})</span>}</span>
+                    </div>
                     <div className="net-stat">
                         <span className="net-icon">↑</span>
-                        <span>{stats.network.bytes_sent_mb} MB sent</span>
+                        <span>Send: <strong>{stats.network.sent_kbps > 1000 ? `${(stats.network.sent_kbps / 1000).toFixed(2)} Mbps` : `${stats.network.sent_kbps} Kbps`}</strong> <span style={{ color: "#777", fontSize: "11px" }}>({stats.network.bytes_sent_mb} MB total)</span></span>
                     </div>
                     <div className="net-stat">
                         <span className="net-icon">↓</span>
-                        <span>{stats.network.bytes_recv_mb} MB recv</span>
+                        <span>Receive: <strong>{stats.network.recv_kbps > 1000 ? `${(stats.network.recv_kbps / 1000).toFixed(2)} Mbps` : `${stats.network.recv_kbps} Kbps`}</strong> <span style={{ color: "#777", fontSize: "11px" }}>({stats.network.bytes_recv_mb} MB total)</span></span>
                     </div>
                 </div>
             </div>
@@ -178,23 +299,30 @@ export default function SystemDashboard({ visible }) {
             <div className="sys-section">
                 <div className="sys-proc-header">
                     <p className="sys-section-title">Processes</p>
-                    <div className="proc-sort-btns">
-                        {["cpu", "ram", "name"].map(s => (
-                            <button
-                                key={s}
-                                className={`proc-sort-btn ${procSort === s ? "active" : ""}`}
-                                onClick={() => setProcSort(s)}
-                            >
-                                {s.toUpperCase()}
-                            </button>
-                        ))}
-                    </div>
                 </div>
                 <div className="proc-table">
                     <div className="proc-row proc-header">
-                        <span>PID</span><span>Name</span><span>CPU</span><span>RAM</span>
+                        <span className="proc-pid">PID</span>
+                        <span className={`proc-name sortable ${procSort === 'name' ? 'active' : ''}`} onClick={() => setProcSort('name')}>Name</span>
+                        <span className={`proc-cpu sortable ${procSort === 'cpu' ? 'active' : ''}`} onClick={() => setProcSort('cpu')}>CPU</span>
+                        <span className={`proc-ram sortable ${procSort === 'ram' ? 'active' : ''}`} onClick={() => setProcSort('ram')}>Memory</span>
+                        <span className={`proc-disk sortable ${procSort === 'disk' ? 'active' : ''}`} onClick={() => setProcSort('disk')}>Disk</span>
+                        <span className={`proc-net sortable ${procSort === 'network' ? 'active' : ''}`} onClick={() => setProcSort('network')}>Network</span>
                     </div>
-                    {processes.map((p, i) => <ProcessRow key={i} proc={p} />)}
+                    
+                    {/* Apps Section */}
+                    <div className="proc-category-header" onClick={() => setAppsExpanded(!appsExpanded)}>
+                        <span className="category-arrow">{appsExpanded ? "▼" : "▶"}</span>
+                        <span>Apps ({totalApps})</span>
+                    </div>
+                    {appsExpanded && apps.map((p, i) => <ProcessRow key={`app-${i}`} proc={p} />)}
+
+                    {/* Background Processes Section */}
+                    <div className="proc-category-header" onClick={() => setBgExpanded(!bgExpanded)}>
+                        <span className="category-arrow">{bgExpanded ? "▼" : "▶"}</span>
+                        <span>Background processes ({totalBg})</span>
+                    </div>
+                    {bgExpanded && background.map((p, i) => <ProcessRow key={`bg-${i}`} proc={p} />)}
                 </div>
             </div>
 

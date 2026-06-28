@@ -1274,8 +1274,8 @@
 .sys-meta {
   display: flex;
   gap: 12px;
-  font-size: 11px;
-  color: #888;
+  font-size: 14px;
+  color: #bbb;
 }
 
 /* Gauges */
@@ -1450,7 +1450,7 @@
 
 .proc-row {
   display: grid;
-  grid-template-columns: 55px 1fr 55px 65px;
+  grid-template-columns: 55px 1fr 50px 70px 70px 70px;
   gap: 8px;
   padding: 5px 6px;
   border-radius: 5px;
@@ -1489,6 +1489,16 @@
 }
 
 .proc-ram {
+  color: #888;
+  text-align: right;
+}
+
+.proc-disk {
+  color: #888;
+  text-align: right;
+}
+
+.proc-net {
   color: #888;
   text-align: right;
 }
@@ -1572,8 +1582,8 @@
 .sys-meta {
   display: flex;
   gap: 12px;
-  font-size: 11px;
-  color: #888;
+  font-size: 14px;
+  color: #bbb;
 }
 
 /* Gauges */
@@ -1588,6 +1598,88 @@
   flex-direction: column;
   align-items: center;
   gap: 4px;
+  position: relative;
+}
+
+.gauge-tooltip {
+  visibility: hidden;
+  position: absolute;
+  top: 105%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(12, 12, 18, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-left: 3px solid var(--accent-color, #6366f1);
+  color: #fff;
+  padding: 12px 14px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  white-space: nowrap;
+  z-index: 100;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(12px);
+  transition: opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1), transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  opacity: 0;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+}
+
+.gauge-wrap:hover .gauge-tooltip {
+  visibility: visible;
+  opacity: 1;
+  transform: translateX(-50%) translateY(5px);
+}
+
+.gauge-tooltip.align-left {
+  left: 0;
+  transform: none;
+}
+.gauge-wrap:hover .gauge-tooltip.align-left {
+  visibility: visible;
+  opacity: 1;
+  transform: translateY(5px);
+}
+
+.gauge-tooltip.align-right {
+  left: auto;
+  right: 0;
+  transform: none;
+}
+.gauge-wrap:hover .gauge-tooltip.align-right {
+  visibility: visible;
+  opacity: 1;
+  transform: translateY(5px);
+}
+
+.gauge-tooltip-title {
+  font-weight: 700;
+  font-size: 12px;
+  color: #fff;
+  margin-bottom: 4px;
+  letter-spacing: 0.3px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding-bottom: 4px;
+}
+
+.gauge-tooltip-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  align-items: center;
+}
+
+.tooltip-key {
+  color: #aaa;
+  font-weight: 500;
+}
+
+.tooltip-val {
+  color: #fff;
+  font-weight: 600;
+  font-family: 'Consolas', 'Courier New', Courier, monospace;
 }
 
 .gauge-label {
@@ -1743,7 +1835,7 @@
 
 .proc-row {
   display: grid;
-  grid-template-columns: 55px 1fr 55px 65px;
+  grid-template-columns: 55px 1fr 50px 70px 70px 70px;
   gap: 8px;
   padding: 5px 6px;
   border-radius: 5px;
@@ -1765,7 +1857,57 @@
   border-bottom: 1px solid rgba(255,255,255,0.06);
 }
 
+.proc-header span.sortable {
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.proc-header span.sortable:hover {
+  color: #bbb;
+}
+
+.proc-header span.sortable.active {
+  color: #6366f1;
+}
+
 .proc-pid  { color: #555; font-size: 10px; }
 .proc-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .proc-cpu  { font-weight: 600; text-align: right; }
 .proc-ram  { color: #888; text-align: right; }
+.proc-disk { color: #888; text-align: right; }
+.proc-net  { color: #888; text-align: right; }
+
+.proc-category-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 4px;
+  margin-top: 14px;
+  margin-bottom: 6px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 11px;
+  font-weight: 600;
+  color: #aaa;
+  border-left: 2px solid #6366f1; /* Accent indicator line */
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.proc-category-header:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: #fff;
+}
+
+.category-arrow {
+  font-size: 8px;
+  color: #666;
+  display: inline-block;
+  width: 10px;
+  transition: transform 0.15s ease;
+}

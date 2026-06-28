@@ -4,7 +4,9 @@ import './App.css'
 import GoogleAuthButton from "./components/GoogleAuthButton"
 import SystemDashboard from "./components/SystemDashboard"
 
-const API_BASE = 'http://localhost:8000'
+const API_BASE = window.location.hostname
+  ? `http://${window.location.hostname}:8000`
+  : 'http://localhost:8000'
 
 // ── Typing indicator ───────────────────────────────────────────────────────────
 function TypingIndicator() {
@@ -316,6 +318,29 @@ export default function App() {
       })
       .catch(() => setStatus('offline'))
   }, [])
+
+  // ── Periodic backend health check (Heartbeat) ──────────────────────────────
+  useEffect(() => {
+    const intervalTime = status === 'offline' ? 3000 : 30000 // 3s when offline, 30s when online
+
+    const pollInterval = setInterval(() => {
+      axios.get(`${API_BASE}/health`)
+        .then(() => {
+          setStatus(prev => {
+            if (prev === 'offline') {
+              clearInterval(pollInterval)
+              window.location.reload()
+            }
+            return 'online'
+          })
+        })
+        .catch(() => {
+          setStatus('offline')
+        })
+    }, intervalTime)
+
+    return () => clearInterval(pollInterval)
+  }, [status])
 
   // ✅ Callback: re-check Google status when auth button reports connected
   const handleGoogleAuthChange = (connected) => {
