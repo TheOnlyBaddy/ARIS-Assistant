@@ -5,15 +5,16 @@
 
 import os
 import json
-from google import genai
+import re
+import httpx
+from typing import Optional
 from google.genai import types
 from dotenv import load_dotenv
 
 load_dotenv()
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-gemini_client  = genai.Client(api_key=GEMINI_API_KEY)
-ROUTER_MODEL   = "gemini-2.5-flash"
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+OLLAMA_CHAT_MODEL = os.getenv("OLLAMA_CHAT_MODEL", "llama3.2")
 
 # ─── INTENT DEFINITIONS ────────────────────────────────────────────────────────
 
@@ -359,6 +360,66 @@ INTENT_TOOLS = [
             )
         ),
 
+        # ── Media Control (New) ────────────────────────────────────────────────
+        types.FunctionDeclaration(
+            name="media_control",
+            description="User wants to control volume or media playback (play, pause, next, prev, mute, volume up, volume down, set volume)",
+            parameters=types.Schema(
+                type=types.Type.OBJECT,
+                properties={
+                    "action": types.Schema(type=types.Type.STRING, description="Action: play, pause, next, prev, mute, vol_up, vol_down, set_volume"),
+                    "level":  types.Schema(type=types.Type.INTEGER, description="Optional volume level between 0 and 100"),
+                },
+                required=["action"]
+            )
+        ),
+
+        # ── Brightness Control (New) ───────────────────────────────────────────
+        types.FunctionDeclaration(
+            name="brightness_control",
+            description="User wants to adjust screen brightness (dim screen, set brightness, make brighter)",
+            parameters=types.Schema(
+                type=types.Type.OBJECT,
+                properties={
+                    "level": types.Schema(type=types.Type.INTEGER, description="Brightness percentage level between 0 and 100"),
+                },
+                required=["level"]
+            )
+        ),
+
+        # ── Power Control (New) ────────────────────────────────────────────────
+        types.FunctionDeclaration(
+            name="power_control",
+            description="User wants to manage PC power state: lock screen, put to sleep, shut down, restart, cancel pending shutdown",
+            parameters=types.Schema(
+                type=types.Type.OBJECT,
+                properties={
+                    "action": types.Schema(type=types.Type.STRING, description="Action: lock, sleep, shutdown, restart, cancel"),
+                },
+                required=["action"]
+            )
+        ),
+
+        # ── Window Snapping (New) ──────────────────────────────────────────────
+        types.FunctionDeclaration(
+            name="window_snap",
+            description="User wants to snap or tile the active/current window to the left or right half of the screen",
+            parameters=types.Schema(
+                type=types.Type.OBJECT,
+                properties={
+                    "direction": types.Schema(type=types.Type.STRING, description="Direction to snap: left, right"),
+                },
+                required=["direction"]
+            )
+        ),
+
+        # ── Network Diagnostics (New) ──────────────────────────────────────────
+        types.FunctionDeclaration(
+            name="network_diagnostics",
+            description="User wants to check network connection signal, SSID, public IP, ping latency, internet status",
+            parameters=types.Schema(type=types.Type.OBJECT, properties={})
+        ),
+
         # ── General ────────────────────────────────────────────────────────────
         types.FunctionDeclaration(
             name="general_chat",
@@ -370,113 +431,232 @@ INTENT_TOOLS = [
 ]
 
 
-# ─── KEYWORD FALLBACK ──────────────────────────────────────────────────────────
+# ─── LOCAL HEURISTICS / KEYWORDS ───────────────────────────────────────────────
 
-def _keyword_fallback(message: str) -> dict:
-    msg = message.lower()
+def _local_heuristics(message: str) -> Optional[dict]:
+    msg = message.lower().strip()
 
-    # Gmail
-    if any(w in msg for w in ["email", "emails", "inbox", "mail", "unread"]):
-        return {"intent": "read_inbox", "params": {"max_results": 5, "category": "primary"}}
-    if "send" in msg and "email" in msg:
-        return {"intent": "send_email", "params": {}}
-
-    # Calendar
-    if any(w in msg for w in ["calendar", "schedule", "agenda"]):
-        return {"intent": "get_today_events", "params": {}}
-    if any(w in msg for w in ["this week", "week events"]):
-        return {"intent": "get_week_events", "params": {}}
-    if any(w in msg for w in ["create event", "add event", "new meeting"]):
-        return {"intent": "create_event", "params": {}}
-
-    # Tasks
-    if any(w in msg for w in ["task", "tasks", "todo", "to-do"]):
-        return {"intent": "get_tasks", "params": {}}
-    if any(w in msg for w in ["add task", "create task", "remind me"]):
-        return {"intent": "create_task", "params": {}}
-
-    # System
-    if any(w in msg for w in ["cpu", "ram", "memory", "battery", "disk", "system"]):
-        return {"intent": "get_system_stats", "params": {}}
-    if any(w in msg for w in ["processes", "running apps"]):
-        return {"intent": "list_processes", "params": {"sort_by": "cpu", "limit": 10}}
-
-    # PC control
-    if any(w in msg for w in ["screenshot", "capture screen"]):
+    # ── PC Control ──
+    if msg in ("take screenshot", "screenshot", "capture screen", "capture screenshot"):
         return {"intent": "take_screenshot", "params": {}}
-    if msg.startswith("open ") or "launch " in msg:
-        app = msg.replace("open ", "").replace("launch ", "").strip()
+    
+    if msg.startswith("open ") or msg.startswith("launch ") or msg.startswith("start "):
+        app = msg.replace("open ", "").replace("launch ", "").replace("start ", "").strip()
         return {"intent": "open_application", "params": {"app": app}}
+        
+    if msg.startswith("close ") or msg.startswith("quit ") or msg.startswith("exit "):
+        title = msg.replace("close ", "").replace("quit ", "").replace("exit ", "").strip()
+        return {"intent": "close_application", "params": {"title": title}}
+        
+    if msg.startswith("kill "):
+        name = msg.replace("kill ", "").strip()
+        return {"intent": "kill_process", "params": {"name": name}}
+        
+    if msg.startswith("type "):
+        text = message[5:].strip()  # Preserve casing
+        return {"intent": "type_text", "params": {"text": text}}
+        
+    if msg.startswith("press hotkey ") or msg.startswith("press key "):
+        keys = msg.replace("press hotkey ", "").replace("press key ", "").strip()
+        return {"intent": "press_hotkey", "params": {"keys": keys}}
 
-    # Files
-    if any(w in msg for w in ["list files", "show files", "what files", "my files"]):
+    if msg.startswith("notify ") or msg.startswith("send notification "):
+        notify_msg = message.replace("notify ", "").replace("send notification ", "").strip()
+        return {"intent": "send_notification", "params": {"title": "ARIS", "message": notify_msg}}
+
+    # ── Media & Volume ──
+    if msg in ("mute", "mute system", "mute volume"):
+        return {"intent": "media_control", "params": {"action": "mute"}}
+    if msg in ("unmute", "unmute system", "unmute volume"):
+        return {"intent": "media_control", "params": {"action": "unmute"}}
+    if msg in ("toggle mute", "toggle sound", "toggle volume"):
+        return {"intent": "media_control", "params": {"action": "toggle_mute"}}
+    if msg in ("volume up", "louder", "increase volume", "raise volume"):
+        return {"intent": "media_control", "params": {"action": "vol_up"}}
+    if msg in ("volume down", "quieter", "decrease volume", "lower volume"):
+        return {"intent": "media_control", "params": {"action": "vol_down"}}
+    if msg in ("play", "pause", "play music", "pause music", "resume", "resume music"):
+        return {"intent": "media_control", "params": {"action": "play"}}
+    if msg in ("next", "next song", "next track", "skip song"):
+        return {"intent": "media_control", "params": {"action": "next"}}
+    if msg in ("previous", "prev", "previous song", "prev track"):
+        return {"intent": "media_control", "params": {"action": "prev"}}
+        
+    # Regex set volume to X or volume X
+    vol_match = re.search(r'(?:set\s+)?volume\s+(?:to\s+)?(\d+)', msg)
+    if vol_match:
+        try:
+            level = int(vol_match.group(1))
+            return {"intent": "media_control", "params": {"action": "set_volume", "level": level}}
+        except ValueError:
+            pass
+
+    # ── Brightness ──
+    bright_match = re.search(r'(?:set\s+)?brightness\s+(?:to\s+)?(\d+)', msg)
+    if bright_match:
+        try:
+            level = int(bright_match.group(1))
+            return {"intent": "brightness_control", "params": {"level": level}}
+        except ValueError:
+            pass
+    if "dim screen" in msg or "lower brightness" in msg:
+        return {"intent": "brightness_control", "params": {"level": 30}}
+    if "brighten screen" in msg or "increase brightness" in msg:
+        return {"intent": "brightness_control", "params": {"level": 80}}
+
+    # ── Power ──
+    if msg in ("lock pc", "lock screen", "lock computer"):
+        return {"intent": "power_control", "params": {"action": "lock"}}
+    if msg in ("sleep pc", "put to sleep", "sleep computer"):
+        return {"intent": "power_control", "params": {"action": "sleep"}}
+    if msg in ("shutdown pc", "turn off pc", "shutdown computer", "turn off computer"):
+        return {"intent": "power_control", "params": {"action": "shutdown"}}
+    if msg in ("restart pc", "reboot pc", "restart computer", "reboot computer"):
+        return {"intent": "power_control", "params": {"action": "restart"}}
+    if msg in ("cancel shutdown", "abort shutdown", "stop shutdown"):
+        return {"intent": "power_control", "params": {"action": "cancel"}}
+
+    # ── Window Snapping ──
+    if msg in ("snap left", "tile left", "window left", "snap window left", "tile window left"):
+        return {"intent": "window_snap", "params": {"direction": "left"}}
+    if msg in ("snap right", "tile right", "window right", "snap window right", "tile window right"):
+        return {"intent": "window_snap", "params": {"direction": "right"}}
+
+    # ── Clipboard ──
+    if msg in ("clipboard read", "get clipboard", "what's in clipboard", "read clipboard", "show clipboard"):
+        return {"intent": "clipboard_read", "params": {}}
+    if msg.startswith("clipboard write ") or msg.startswith("copy to clipboard "):
+        clip_text = message.replace("clipboard write ", "").replace("copy to clipboard ", "").strip()
+        return {"intent": "clipboard_write", "params": {"text": clip_text}}
+
+    # ── System Stats ──
+    if msg in ("cpu", "ram", "memory", "battery", "disk", "system stats", "system health", "get stats"):
+        return {"intent": "get_system_stats", "params": {}}
+    if msg in ("processes", "running apps", "show processes", "list processes"):
+        return {"intent": "list_processes", "params": {"sort_by": "cpu", "limit": 10}}
+    if msg in ("network ssid", "signal", "ping", "latency", "internet stats", "network diagnostics", "ping latency", "network signal"):
+        return {"intent": "network_diagnostics", "params": {}}
+
+    # ── Files ──
+    if msg in ("list files", "show files", "what files", "my files"):
         return {"intent": "list_files", "params": {"path": "~"}}
+    if msg.startswith("list files in ") or msg.startswith("show files in "):
+        path = message.replace("list files in ", "").replace("show files in ", "").strip()
+        return {"intent": "list_files", "params": {"path": path}}
+    if msg.startswith("read file ") or msg.startswith("show file "):
+        path = message.replace("read file ", "").replace("show file ", "").strip()
+        return {"intent": "read_file", "params": {"path": path}}
 
-    # Browser
-    if any(w in msg for w in ["search web", "search for", "google", "look up"]):
-        query = msg.split("for ")[-1] if "for " in msg else msg
+    # ── Browser ──
+    if msg.startswith("search for ") or msg.startswith("search web for ") or msg.startswith("google "):
+        query = message.replace("search for ", "").replace("search web for ", "").replace("google ", "").strip()
         return {"intent": "browser_search", "params": {"query": query}}
-    if any(w in msg for w in ["open website", "go to", "visit"]):
-        return {"intent": "browser_open", "params": {"url": ""}}
+    if msg.startswith("open website ") or msg.startswith("go to ") or msg.startswith("visit "):
+        url = msg.replace("open website ", "").replace("go to ", "").replace("visit ", "").strip()
+        return {"intent": "browser_open", "params": {"url": url}}
 
-    # Relationships
-    if any(w in msg for w in ["birthday", "birthdays"]):
+    # ── Relationships ──
+    if msg in ("birthday", "birthdays", "upcoming birthdays"):
         return {"intent": "get_upcoming_birthdays", "params": {}}
-    if any(w in msg for w in ["haven't talked", "reach out", "neglected"]):
+    if msg in ("neglected", "neglected contacts", "reach out"):
         return {"intent": "get_neglected_contacts", "params": {}}
 
+    return None
+
+
+# ─── LOCAL OLLAMA INTENT CLASSIFIER ─────────────────────────────────────────────
+
+async def _classify_with_ollama(message: str) -> dict:
+    prompt = f"""You are the intent routing engine for ARIS.
+Classify the following user message into one of the available intents.
+You MUST output a valid JSON object matching this schema:
+{{
+  "intent": "intent_name",
+  "params": {{}}
+}}
+
+Available intents:
+- "open_application": Open/launch an app. params: {{"app": "app name"}}
+- "close_application": Close/quit an app. params: {{"title": "app name"}}
+- "media_control": Control volume or playback. params: {{"action": "mute|vol_up|vol_down|play|next|prev|set_volume", "level": optional_integer}}
+- "brightness_control": Adjust screen brightness. params: {{"level": integer}}
+- "power_control": Put PC to sleep, lock, shutdown, restart. params: {{"action": "lock|sleep|shutdown|restart|cancel"}}
+- "window_snap": Snap window to half screen. params: {{"direction": "left|right"}}
+- "take_screenshot": Capture the screen. params: {{}}
+- "type_text": Emulate typing text. params: {{"text": "text to type"}}
+- "press_hotkey": Press key shortcut. params: {{"keys": "key combo"}}
+- "send_notification": Show desktop notification. params: {{"message": "alert message"}}
+- "clipboard_read": Read from clipboard. params: {{}}
+- "clipboard_write": Copy text to clipboard. params: {{"text": "text"}}
+- "get_system_stats": CPU, RAM, disk, battery. params: {{}}
+- "list_processes": Show active running processes. params: {{}}
+- "kill_process": Kill/stop a process. params: {{"name": "process name"}}
+- "network_diagnostics": Wi-Fi, signal, latency ping, public IP. params: {{}}
+- "list_files": List files in directory. params: {{"path": "folder path"}}
+- "read_file": Read content of a file. params: {{"path": "file path"}}
+- "write_file": Write content to a file. params: {{"path": "file path", "content": "text"}}
+- "browser_search": Search web/Google. params: {{"query": "search query"}}
+- "browser_open": Open a URL. params: {{"url": "url string"}}
+- "read_inbox": Read unread email inbox. params: {{}}
+- "send_email": Send an email. params: {{}}
+- "search_emails": Search email inbox. params: {{}}
+- "get_today_events": Show today's calendar events. params: {{}}
+- "get_week_events": Show this week's calendar events. params: {{}}
+- "create_event": Add event to calendar. params: {{}}
+- "get_tasks": Show Google Tasks checklist. params: {{}}
+- "create_task": Add task to Google Tasks. params: {{}}
+- "complete_task": Mark task as completed. params: {{}}
+- "get_person": Query relationship memory details. params: {{"name": "person name"}}
+- "get_neglected_contacts": Identify people to reach out to. params: {{}}
+- "get_upcoming_birthdays": Check birthdays. params: {{}}
+- "general_chat": Conversational greetings, creative tasks, passages, jokes, or any message that doesn't fit a specific tool. params: {{}}
+
+User message: "{message}"
+
+JSON response:"""
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            r = await client.post(
+                f"{OLLAMA_BASE_URL}/api/generate",
+                json={
+                    "model": OLLAMA_CHAT_MODEL,
+                    "prompt": prompt,
+                    "stream": False,
+                    "format": "json",
+                    "options": {
+                        "temperature": 0.0
+                    }
+                }
+            )
+            r.raise_for_status()
+            res_json = r.json()
+            response_text = res_json.get("response", "").strip()
+            
+            parsed = json.loads(response_text)
+            if "intent" in parsed:
+                return {
+                    "intent": parsed["intent"],
+                    "params": parsed.get("params", {})
+                }
+    except Exception as e:
+        print(f"[Router] Local Ollama classification failed: {e}")
+        
     return {"intent": "general_chat", "params": {}}
 
 
 # ─── ROUTER ────────────────────────────────────────────────────────────────────
 
 async def route_message(message: str) -> dict:
-    return _keyword_fallback(message)  # ← ADD THIS LINE TEMPORARILY
+    # 1. Local keyword/regex heuristics (0ms)
+    matched = _local_heuristics(message)
+    if matched:
+        print(f"[ARIS Router] Heuristics matched intent: {matched['intent']}")
+        return matched
 
-    try:
-        response = gemini_client.models.generate_content(
-            model=ROUTER_MODEL,
-            contents=[types.Content(
-                role="user",
-                parts=[types.Part(text=message)]
-            )],
-            config=types.GenerateContentConfig(
-                system_instruction=(
-                    "You are an intent classifier for ARIS, a personal AI assistant with full PC control. "
-                    "Given the user's message, call the most appropriate function and extract all parameters. "
-                    "For dates/times, use ISO 8601 with India timezone offset +05:30. "
-                    "For PC control commands (open app, screenshot, system stats, file ops, browser), "
-                    "always extract the app name, path, or query from the message. "
-                    "If the message is conversation or doesn't match any integration, call general_chat."
-                ),
-                tools=INTENT_TOOLS,
-                temperature=0.1,
-            )
-        )
-
-        candidates = response.candidates
-        if not candidates:
-            return {"intent": "general_chat", "params": {}}
-
-        parts = candidates[0].content.parts if candidates[0].content else []
-        if not parts:
-            return {"intent": "general_chat", "params": {}}
-
-        for part in parts:
-            if hasattr(part, 'function_call') and part.function_call:
-                fc = part.function_call
-                return {
-                    "intent": fc.name,
-                    "params": dict(fc.args) if fc.args else {}
-                }
-
-        return {"intent": "general_chat", "params": {}}
-
-    except Exception as e:
-        import traceback
-        print(f"[Router] Gemini error: {e}")
-        print(f"[Router] Traceback: {traceback.format_exc()}")
-        return _keyword_fallback(message)
+    # 2. Local Ollama intent classification (local model)
+    print(f"[ARIS Router] Calling local Ollama intent classifier...")
+    return await _classify_with_ollama(message)
 
 
 # ─── EXECUTOR ──────────────────────────────────────────────────────────────────
@@ -572,48 +752,60 @@ async def execute_intent(intent: str, params: dict) -> dict:
 
         # ── PC Control ─────────────────────────────────────────────────────────
         elif intent == "open_application":
-            from control.pc import open_app
-            return {"type": "pc_action", "data": open_app(params.get("app", ""))}
+            app_name = params.get("app", "")
+            # Try folder/file/URL first
+            from control.pc.software.folder import open_folder
+            folder_res = open_folder(app_name)
+            if folder_res is not None:
+                if folder_res.get("status") == "error":
+                    return {"type": "app_not_found", "data": {"app": app_name, "error": folder_res.get("error")}}
+                return {"type": "pc_action", "data": folder_res}
+            # Fall back to app launcher
+            from control.pc.software import open_app
+            res = open_app(app_name)
+            if res.get("status") == "error":
+                return {"type": "app_not_found", "data": {"app": app_name, "error": res.get("error")}}
+            return {"type": "pc_action", "data": res}
 
         elif intent == "close_application":
-            from control.pc import close_window
+            from control.pc.software import close_window
             return {"type": "pc_action", "data": close_window(params.get("title", ""))}
 
         elif intent == "take_screenshot":
-            from control.pc import take_screenshot
+            from control.pc.software import take_screenshot
             return {"type": "pc_action", "data": take_screenshot()}
 
         elif intent == "type_text":
-            from control.pc import type_text
+            from control.pc.software import type_text
             return {"type": "pc_action", "data": type_text(params.get("text", ""))}
 
         elif intent == "press_hotkey":
-            from control.pc import hotkey
+            from control.pc.software import hotkey
             keys = [k.strip() for k in params.get("keys", "").replace("+", " ").split()]
             return {"type": "pc_action", "data": hotkey(*keys)}
 
         elif intent == "clipboard_write":
-            from control.pc import clipboard_write
+            from control.pc.software import clipboard_write
             return {"type": "pc_action", "data": clipboard_write(params.get("text", ""))}
 
         elif intent == "clipboard_read":
-            from control.pc import clipboard_read
+            from control.pc.software import clipboard_read
             return {"type": "pc_action", "data": clipboard_read()}
 
         # ── System Monitoring ──────────────────────────────────────────────────
         elif intent == "get_system_stats":
-            from control.system import get_stats
+            from control.pc.hardware import get_stats
             return {"type": "system_stats", "data": get_stats()}
 
         elif intent == "list_processes":
-            from control.system import list_processes
+            from control.pc.hardware import list_processes
             return {"type": "system_stats", "data": list_processes(
                 sort_by=params.get("sort_by", "cpu"),
                 limit=int(params.get("limit", 10))
             )}
 
         elif intent == "kill_process":
-            from control.system import kill_process
+            from control.pc.hardware import kill_process
             # Safety: always require confirmation via chat
             return {"type": "needs_confirmation", "data": {
                 "action" : "kill_process",
@@ -623,22 +815,22 @@ async def execute_intent(intent: str, params: dict) -> dict:
 
         # ── File Management ────────────────────────────────────────────────────
         elif intent == "list_files":
-            from control.files import list_directory
+            from control.pc.software import list_directory
             return {"type": "files", "data": list_directory(params.get("path", "~"))}
 
         elif intent == "create_file":
-            from control.files import create_file
+            from control.pc.software import create_file
             return {"type": "files", "data": create_file(
                 path=params.get("path", ""),
                 content=params.get("content", "")
             )}
 
         elif intent == "read_file":
-            from control.files import read_file
+            from control.pc.software import read_file
             return {"type": "files", "data": read_file(params.get("path", ""))}
 
         elif intent == "search_files":
-            from control.files import search_files
+            from control.pc.software import search_files
             return {"type": "files", "data": search_files(
                 query=params.get("query", ""),
                 search_path=params.get("search_path", "~"),
@@ -647,11 +839,11 @@ async def execute_intent(intent: str, params: dict) -> dict:
 
         # ── Browser ────────────────────────────────────────────────────────────
         elif intent == "browser_open":
-            from control.browser import open_url
+            from control.pc.software import open_url
             return {"type": "browser", "data": open_url(params.get("url", ""))}
 
         elif intent == "browser_search":
-            from control.browser import search_google
+            from control.pc.software import search_google
             return {"type": "browser", "data": search_google(
                 query=params.get("query", ""),
                 max_results=int(params.get("max_results", 5))
@@ -659,11 +851,67 @@ async def execute_intent(intent: str, params: dict) -> dict:
 
         # ── Notifications ──────────────────────────────────────────────────────
         elif intent == "send_notification":
-            from control.notify import send_notification
+            from control.pc.software import send_notification
             return {"type": "pc_action", "data": send_notification(
                 title=params.get("title", "ARIS"),
                 message=params.get("message", "")
             )}
+
+        # ── Media Control (New) ────────────────────────────────────────────────
+        elif intent == "media_control":
+            from control.pc.hardware import media_control
+            action = params.get("action", "")
+            level = params.get("level")
+            return {"type": "pc_action", "data": media_control(action, level)}
+
+        # ── Brightness Control (New) ───────────────────────────────────────────
+        elif intent == "brightness_control":
+            from control.pc.hardware import set_brightness
+            level = params.get("level", 50)
+            return {"type": "pc_action", "data": set_brightness(level)}
+
+        # ── Power Control (New) ────────────────────────────────────────────────
+        elif intent == "power_control":
+            from control.pc.hardware import lock_pc, sleep_pc, shutdown_pc, restart_pc, cancel_shutdown
+            action = params.get("action", "").lower().strip()
+            confirmed = params.get("confirmed", False)
+            if action == "lock":
+                return {"type": "pc_action", "data": lock_pc()}
+            elif action == "sleep":
+                return {"type": "pc_action", "data": sleep_pc()}
+            elif action == "shutdown":
+                res = shutdown_pc(confirmed)
+                if res.get("status") == "needs_confirmation":
+                    return {"type": "needs_confirmation", "data": {
+                        "action": "power_control",
+                        "params": {"action": "shutdown"},
+                        "message": "Are you sure you want to shut down your PC? Reply 'yes' to proceed."
+                    }}
+                return {"type": "pc_action", "data": res}
+            elif action == "restart":
+                res = restart_pc(confirmed)
+                if res.get("status") == "needs_confirmation":
+                    return {"type": "needs_confirmation", "data": {
+                        "action": "power_control",
+                        "params": {"action": "restart"},
+                        "message": "Are you sure you want to restart your PC? Reply 'yes' to proceed."
+                    }}
+                return {"type": "pc_action", "data": res}
+            elif action in ("cancel", "abort"):
+                return {"type": "pc_action", "data": cancel_shutdown()}
+            else:
+                return {"type": "pc_action", "data": {"status": "error", "error": f"Unknown power action '{action}'"}}
+
+        # ── Window Snapping (New) ──────────────────────────────────────────────
+        elif intent == "window_snap":
+            from control.pc.software import snap_window
+            direction = params.get("direction", "left")
+            return {"type": "pc_action", "data": snap_window(direction)}
+
+        # ── Network Diagnostics (New) ──────────────────────────────────────────
+        elif intent == "network_diagnostics":
+            from control.pc.hardware import get_network_diagnostics
+            return {"type": "network_diagnostics", "data": get_network_diagnostics()}
 
         # ── Fallback ───────────────────────────────────────────────────────────
         else:

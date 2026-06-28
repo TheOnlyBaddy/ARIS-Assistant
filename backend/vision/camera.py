@@ -46,7 +46,7 @@ CAMERA_INDEX = 0        # 0 = first camera, 1 = second camera
 WARMUP_FRAMES = 5       # Discard first N frames — camera needs to adjust exposure
 os.makedirs(CAMERA_DIR, exist_ok=True)
 
-print("✅ Camera Vision module ready")
+print("Camera Vision module ready")
 
 # ── Find available cameras ────────────────────────────────────
 def list_cameras() -> list[int]:
@@ -89,7 +89,7 @@ def capture_frame(camera_index: int = None) -> tuple[Image.Image, str]:
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
 
     # Warmup — discard first N frames so exposure adjusts
-    print(f"   📷 Camera warming up ({WARMUP_FRAMES} frames)...")
+    print(f"   Camera warming up ({WARMUP_FRAMES} frames)...")
     for _ in range(WARMUP_FRAMES):
         cap.read()
 
@@ -128,7 +128,7 @@ def analyze_camera(prompt: str = None, camera_index: int = None) -> dict:
 
     Returns dict with description, image path, model used, timing.
     """
-    print("📷 Capturing from webcam...")
+    print("Capturing from webcam...")
     img, path = capture_frame(camera_index)
     print(f"   Frame: {img.width}x{img.height}px → {path}")
 
@@ -137,13 +137,15 @@ def analyze_camera(prompt: str = None, camera_index: int = None) -> dict:
         vision_prompt = (
             "You are ARIS, a personal AI assistant with camera vision. "
             "Describe what you see through the camera concisely in 2-3 sentences. "
-            "Focus on: people present, objects, environment, and anything notable."
+            "Focus on: people present, objects, environment, and anything notable. "
+            "Never address the user by name; always use 'boss' or 'sir'."
         )
     else:
         vision_prompt = (
             f"You are ARIS, a personal AI assistant with camera vision. "
             f"The user asks: '{prompt}'. "
-            f"Answer based on what you can see through the camera."
+            f"Answer based on what you can see through the camera. "
+            f"Never address the user by name; always use 'boss' or 'sir'."
         )
 
     img_bytes = _image_to_bytes(img)
@@ -151,7 +153,7 @@ def analyze_camera(prompt: str = None, camera_index: int = None) -> dict:
     last_error = None
     for model_name in VISION_MODELS:
         try:
-            print(f"🔍 Sending to {model_name}...")
+            print(f"Sending to {model_name}...")
             start = time.time()
 
             response = _client.models.generate_content(
@@ -167,7 +169,7 @@ def analyze_camera(prompt: str = None, camera_index: int = None) -> dict:
 
             elapsed     = time.time() - start
             description = response.text.strip()
-            print(f"✅ Camera vision response in {elapsed:.1f}s")
+            print(f"Camera vision response in {elapsed:.1f}s")
 
             return {
                 "description" : description,
@@ -179,7 +181,7 @@ def analyze_camera(prompt: str = None, camera_index: int = None) -> dict:
             }
 
         except Exception as e:
-            print(f"   ⚠️  {model_name} failed: {str(e)[:100]}")
+            print(f"   {model_name} failed: {str(e)[:100]}")
             last_error = e
             continue
 

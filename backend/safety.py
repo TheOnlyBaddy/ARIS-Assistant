@@ -25,20 +25,24 @@ BASE_DIR  = os.path.dirname(os.path.abspath(__file__))
 AUDIT_DB  = os.path.join(BASE_DIR, "audit_log.db")
 
 def _init_audit_db():
-    conn = sqlite3.connect(AUDIT_DB)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS control_audit (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            timestamp   TEXT    NOT NULL,
-            action      TEXT    NOT NULL,
-            params      TEXT,
-            result      TEXT,
-            confirmed   INTEGER DEFAULT 0,
-            blocked     INTEGER DEFAULT 0
-        )
-    """)
-    conn.commit()
-    conn.close()
+    conn = None
+    try:
+        conn = sqlite3.connect(AUDIT_DB)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS control_audit (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp   TEXT    NOT NULL,
+                action      TEXT    NOT NULL,
+                params      TEXT,
+                result      TEXT,
+                confirmed   INTEGER DEFAULT 0,
+                blocked     INTEGER DEFAULT 0
+            )
+        """)
+        conn.commit()
+    finally:
+        if conn:
+            conn.close()
 
 _init_audit_db()
 
@@ -46,6 +50,7 @@ _init_audit_db()
 def log_control_action(action: str, params: str = "", result: str = "",
                         confirmed: bool = False, blocked: bool = False):
     """Write every control action to the audit log."""
+    conn = None
     try:
         conn = sqlite3.connect(AUDIT_DB)
         conn.execute("""
@@ -60,13 +65,16 @@ def log_control_action(action: str, params: str = "", result: str = "",
             int(blocked)
         ))
         conn.commit()
-        conn.close()
     except Exception as e:
         print(f"[Audit] Log failed: {e}")
+    finally:
+        if conn:
+            conn.close()
 
 
 def get_audit_log(limit: int = 50) -> list[dict]:
     """Return recent audit log entries, newest first."""
+    conn = None
     try:
         conn = sqlite3.connect(AUDIT_DB)
         conn.row_factory = sqlite3.Row
@@ -74,11 +82,13 @@ def get_audit_log(limit: int = 50) -> list[dict]:
             SELECT * FROM control_audit
             ORDER BY id DESC LIMIT ?
         """, (limit,)).fetchall()
-        conn.close()
         return [dict(r) for r in rows]
     except Exception as e:
         print(f"[Audit] Read failed: {e}")
         return []
+    finally:
+        if conn:
+            conn.close()
 
 # ─── BLOCKED CONTENT PATTERNS ──────────────────────────────────────────────────
 

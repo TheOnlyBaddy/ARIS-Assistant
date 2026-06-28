@@ -31,7 +31,7 @@ def _get_output_device():
         for i, d in enumerate(devices):
             if (d['max_output_channels'] > 0 and
                 d['name'].lower() == default['name'].lower()):
-                print(f"✅ Audio output auto-selected: [{i}] {d['name']}")
+                print(f"Audio output auto-selected: [{i}] {d['name']}")
                 return i
     except Exception:
         pass
@@ -52,10 +52,10 @@ def _get_output_device():
                 if any(skip in name_lower for skip in skip_keywords):
                     continue
                 if all(kw in name_lower for kw in keywords):
-                    print(f"✅ Audio output auto-selected: [{i}] {d['name']}")
+                    print(f"Audio output auto-selected: [{i}] {d['name']}")
                     return i
 
-    print("✅ Audio output: system default")
+    print("Audio output: system default")
     return None
 
 OUTPUT_DEVICE = _get_output_device()
@@ -68,9 +68,9 @@ _local_engine = pyttsx3.init()
 _voices = _local_engine.getProperty('voices')
 if len(_voices) > LOCAL_VOICE_IDX:
     _local_engine.setProperty('voice', _voices[LOCAL_VOICE_IDX].id)
-    print(f"✅ Local TTS (pyttsx3) ready: {_voices[LOCAL_VOICE_IDX].name}")
+    print(f"Local TTS (pyttsx3) ready: {_voices[LOCAL_VOICE_IDX].name}")
 else:
-    print("✅ Local TTS (pyttsx3) ready: default voice")
+    print("Local TTS (pyttsx3) ready: default voice")
 _local_engine.setProperty('rate', LOCAL_VOICE_RATE)
 _local_engine.setProperty('volume', 1.0)
 
@@ -83,11 +83,11 @@ def _get_kokoro():
     if _kokoro_pipeline is None:
         try:
             from kokoro import KPipeline
-            print("⏳ Loading Kokoro TTS model...")
+            print("Loading Kokoro TTS model...")
             _kokoro_pipeline = KPipeline(lang_code='a')
-            print("✅ Kokoro TTS ready")
+            print("Kokoro TTS ready")
         except Exception as e:
-            print(f"⚠️  Kokoro load failed: {e}")
+            print(f"Kokoro load failed: {e}")
             return None
     return _kokoro_pipeline
 
@@ -109,7 +109,7 @@ def _speak_kokoro(text: str) -> bool:
             audio_chunks.append(audio)
 
         if not audio_chunks:
-            print("⚠️  Kokoro returned empty audio")
+            print("Kokoro returned empty audio")
             return False
 
         audio_data = np.concatenate(audio_chunks)
@@ -121,7 +121,7 @@ def _speak_kokoro(text: str) -> bool:
         return True
 
     except Exception as e:
-        print(f"⚠️  Kokoro error: {e} — falling back to pyttsx3")
+        print(f"Kokoro error: {e} — falling back to pyttsx3")
         return False
 
 # ── pyttsx3 fallback ────────────────────────────────────────

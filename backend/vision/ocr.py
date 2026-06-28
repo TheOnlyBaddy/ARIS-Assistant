@@ -25,7 +25,7 @@ JPEG_QUALITY = 95   # High quality for OCR — text clarity matters
 OCR_DIR      = "vision/ocr_shots"
 os.makedirs(OCR_DIR, exist_ok=True)
 
-print("✅ OCR module ready (Gemini Vision)")
+print("OCR module ready (Gemini Vision)")
 
 # ── Convert PIL image to bytes ────────────────────────────────
 def _image_to_bytes(img: Image.Image) -> bytes:
@@ -95,7 +95,7 @@ def _run_ocr(img: Image.Image, mode: str = "extract", context: str = "") -> dict
             }
 
         except Exception as e:
-            print(f"   ⚠️  {model_name} failed: {str(e)[:80]}")
+            print(f"   {model_name} failed: {str(e)[:80]}")
             last_error = e
             continue
 
@@ -109,7 +109,7 @@ def ocr_screen(mode: str = "extract", question: str = "") -> dict:
     question: used when mode="answer"
     """
     from vision.screen import capture_screen
-    print("📸 Capturing screen for OCR...")
+    print("Capturing screen for OCR...")
     img, _ = capture_screen()
     print(f"   Image: {img.width}x{img.height}px")
     print(f"   Mode : {mode}")
@@ -124,7 +124,7 @@ def ocr_camera(mode: str = "extract", question: str = "") -> dict:
     question: used when mode="answer"
     """
     from vision.camera import capture_frame
-    print("📷 Capturing camera frame for OCR...")
+    print("Capturing camera frame for OCR...")
     img, _ = capture_frame()
     print(f"   Image: {img.width}x{img.height}px")
     print(f"   Mode : {mode}")

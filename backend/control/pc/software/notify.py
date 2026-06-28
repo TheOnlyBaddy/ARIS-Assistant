@@ -1,4 +1,4 @@
-# ARIS/control/notify.py
+# ARIS/control/pc/software/notify.py
 """
 Desktop Notification module for ARIS — Windows 11
 Uses plyer for native Windows toast notifications.

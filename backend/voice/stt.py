@@ -21,24 +21,26 @@ def _load_model():
     if os.path.exists(FINETUNED_MODEL):
         try:
             from transformers import pipeline
-            print(f"⏳ Loading fine-tuned ARIS Whisper from {FINETUNED_MODEL}...")
+            import torch
+            device_idx = 0 if torch.cuda.is_available() else -1
+            print(f"Loading fine-tuned ARIS Whisper from {FINETUNED_MODEL} (device={device_idx})...")
             _model = pipeline(
                 "automatic-speech-recognition",
                 model=FINETUNED_MODEL,
-                device=0          # GPU
+                device=device_idx
             )
             _model_type = "finetuned"
-            print("✅ Fine-tuned Whisper loaded (Hindi + Indian English optimized)")
+            print("Fine-tuned Whisper loaded (Hindi + Indian English optimized)")
             return
         except Exception as e:
-            print(f"⚠️  Fine-tuned model failed: {e}")
+            print(f"Fine-tuned model failed: {e}")
 
     # Fallback to base Whisper
     import whisper
-    print(f"⏳ Loading base Whisper {FALLBACK_MODEL}...")
+    print(f"Loading base Whisper {FALLBACK_MODEL}...")
     _model      = whisper.load_model(FALLBACK_MODEL)
     _model_type = "base"
-    print(f"✅ Base Whisper {FALLBACK_MODEL} loaded")
+    print(f"Base Whisper {FALLBACK_MODEL} loaded")
 
 def get_model():
     if _model is None:

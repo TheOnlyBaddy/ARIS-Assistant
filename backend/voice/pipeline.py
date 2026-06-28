@@ -90,13 +90,13 @@ def _get_mic():
             if (d['max_input_channels'] > 0 and
                 keyword in d['name'].lower() and
                 'stereo mix' not in d['name'].lower()):
-                print(f"✅ Mic auto-selected: [{i}] {d['name']}")
+                print(f"Mic auto-selected: [{i}] {d['name']}")
                 return i
     for i, d in enumerate(devices):
         if (d['max_input_channels'] > 0 and
             'stereo mix' not in d['name'].lower() and
             'loopback' not in d['name'].lower()):
-            print(f"✅ Mic fallback: [{i}] {d['name']}")
+            print(f"Mic fallback: [{i}] {d['name']}")
             return i
     raise RuntimeError("No input device found! Check mic is plugged in.")
 
@@ -158,7 +158,7 @@ def _ask_aris(text: str, emotion_context: str = "") -> str:
     except requests.exceptions.ConnectionError:
         return "Sorry, FastAPI is not running. Start it with uvicorn first."
     except requests.exceptions.Timeout:
-        return "Sorry Shubh, that took too long. Please try again."
+        return "Sorry boss, that took too long. Please try again."
     except Exception as e:
         return f"Sorry, something went wrong: {str(e)}"
 
@@ -183,13 +183,13 @@ def _run_pipeline():
     print("=" * 55)
     pipeline_state["status"] = "loading"
 
-    print("⏳ Loading OpenWakeWord gate...")
+    print("Loading OpenWakeWord gate...")
     oww = WakeWordModel(wakeword_models=["hey_jarvis"], inference_framework="onnx")
-    print("✅ Wake word gate ready")
+    print("Wake word gate ready")
 
-    print("⏳ Loading Whisper small...")
+    print("Loading Whisper small...")
     whisper_model = whisper.load_model("small")
-    print("✅ Whisper ready")
+    print("Whisper ready")
 
     mic = _get_mic()
 
@@ -197,7 +197,7 @@ def _run_pipeline():
     pre_buffer        = collections.deque(maxlen=pre_buffer_chunks)
     post_chunks       = int(POST_BUFFER_SECS * SAMPLE_RATE / CHUNK_SIZE)
 
-    print(f"\n👂 ARIS is listening. Say 'Hey ARIS' to activate.")
+    print(f"\nARIS is listening. Say 'Hey ARIS' to activate.")
     print(f"   Pre-buffer  : {PRE_BUFFER_SECS}s")
     print(f"   Post-buffer : {POST_BUFFER_SECS}s")
     print(f"   Gate thresh : {GATE_THRESH}\n")
@@ -233,7 +233,7 @@ def _run_pipeline():
                     continue
 
                 # ── Gate fired — collect full audio ────────────
-                print(f"\n🔊 Gate triggered (score={max_score:.3f})")
+                print(f"\nGate triggered (score={max_score:.3f})")
                 pipeline_state["status"] = "wake_detected"
 
                 post_audio = []
@@ -249,7 +249,7 @@ def _run_pipeline():
 
                 # ── Transcribe to check wake phrase ────────────
                 pipeline_state["status"] = "transcribing"
-                print("🎙️  Transcribing...")
+                print("Transcribing...")
                 text = _transcribe(whisper_model, full_audio)
 
                 if not text:
@@ -269,21 +269,21 @@ def _run_pipeline():
 
                 # ── Wake confirmed ─────────────────────────────
                 pipeline_state["wake_count"] += 1
-                print(f"\n🎯 ARIS activated! (#{pipeline_state['wake_count']})")
+                print(f"\nARIS activated! (#{pipeline_state['wake_count']})")
 
                 pre_buffer.clear()
                 oww.reset()
 
-                _speak_and_wait("Yes Shubh?")
+                _speak_and_wait("Yes boss?")
 
                 # ── Record question ────────────────────────────
-                print(f"🎙️  Listening for your question ({QUESTION_SECS}s)...")
+                print(f"Listening for your question ({QUESTION_SECS}s)...")
                 pipeline_state["status"] = "recording"
                 question_audio = _record_question(mic, QUESTION_SECS)
 
                 # ── Transcribe question ────────────────────────
                 pipeline_state["status"] = "transcribing"
-                print("🎙️  Transcribing question...")
+                print("Transcribing question...")
                 question = _transcribe(whisper_model, question_audio)
 
                 if not question:
@@ -291,7 +291,7 @@ def _run_pipeline():
                     pipeline_state["status"] = "listening"
                     continue
 
-                print(f"❓ Question: \"{question}\"")
+                print(f"Question: \"{question}\"")
                 pipeline_state["last_heard"] = question
 
                 # ── Detect emotion ─────────────────────────────
@@ -301,7 +301,7 @@ def _run_pipeline():
                     sample_rate = SAMPLE_RATE
                 )
                 emoji = get_emotion_emoji(emotion_result["emotion"])
-                print(f"🎭 Emotion: {emoji} {emotion_result['emotion']} "
+                print(f"Emotion: {emoji} {emotion_result['emotion']} "
                       f"(text={emotion_result['text_emotion']}, "
                       f"audio={emotion_result['audio_emotion']})")
 
@@ -312,44 +312,44 @@ def _run_pipeline():
                 # If user asks about screen, bypass ARIS brain
                 # and respond directly with Gemini Vision result
                 if _is_screen_request(question):
-                    print("👁️  Screen vision requested!")
+                    print("Screen vision requested!")
                     pipeline_state["status"] = "thinking"
                     try:
                         from vision.screen import describe_screen
                         screen_desc = describe_screen()
                         reply = f"I can see your screen. {screen_desc}"
-                        print(f"👁️  Screen: {screen_desc[:80]}...")
+                        print(f"Screen: {screen_desc[:80]}...")
                     except Exception as e:
                         reply = f"Sorry, I could not capture the screen. Error: {str(e)}"
-                        print(f"❌ Screen vision error: {e}")
+                        print(f"Screen vision error: {e}")
 
                     pipeline_state["last_reply"] = reply
                     _speak_and_wait(reply)
-                    print("👂 Back to listening...\n")
+                    print("Back to listening...\n")
                     pipeline_state["status"] = "listening"
                     continue
                 
                 # ── Camera vision shortcut ─────────────────────────────────
                 elif any(p in question.lower() for p in CAMERA_PHRASES):
-                    print("📷 Camera vision requested!")
+                    print("Camera vision requested!")
                     pipeline_state["status"] = "thinking"
                     try:
                         from vision.camera import describe_camera
                         cam_desc = describe_camera()
                         reply = f"Looking through the camera, I can see: {cam_desc}"
-                        print(f"📷 Camera: {cam_desc[:80]}...")
+                        print(f"Camera: {cam_desc[:80]}...")
                     except Exception as e:
                         reply = f"Sorry, I could not access the camera. Error: {str(e)}"
-                        print(f"❌ Camera error: {e}")
+                        print(f"Camera error: {e}")
                     pipeline_state["last_reply"] = reply
                     _speak_and_wait(reply)
-                    print("👂 Back to listening...\n")
+                    print("Back to listening...\n")
                     pipeline_state["status"] = "listening"
                     continue
 
                 # ── OCR shortcut ────────────────────────────────────────────
                 elif any(p in question.lower() for p in OCR_PHRASES):
-                    print("📝 OCR requested!")
+                    print("OCR requested!")
                     pipeline_state["status"] = "thinking"
                     try:
                         from vision.ocr import read_screen
@@ -359,28 +359,28 @@ def _run_pipeline():
                         reply = f"Sorry, I could not read the text. Error: {str(e)}"
                     pipeline_state["last_reply"] = reply
                     _speak_and_wait(reply)
-                    print("👂 Back to listening...\n")
+                    print("Back to listening...\n")
                     pipeline_state["status"] = "listening"
                     continue
 
                 # ── Send to ARIS brain with emotion context ────
                 pipeline_state["status"] = "thinking"
-                print("🧠 Thinking...")
+                print("Thinking...")
                 reply = _ask_aris(
                     text            = question,
                     emotion_context = emotion_result["system_prompt"]
                 )
-                print(f"💬 ARIS: \"{reply[:100]}{'...' if len(reply)>100 else ''}\"")
+                print(f"ARIS: \"{reply[:100]}{'...' if len(reply)>100 else ''}\"")
                 pipeline_state["last_reply"] = reply
 
                 # ── Speak response ─────────────────────────────
                 _speak_and_wait(reply)
 
-                print("👂 Back to listening...\n")
+                print("Back to listening...\n")
                 pipeline_state["status"] = "listening"
 
     except Exception as e:
-        print(f"\n❌ Pipeline error: {e}")
+        print(f"\nPipeline error: {e}")
         import traceback
         traceback.print_exc()
         pipeline_state["error"]   = str(e)
@@ -390,7 +390,7 @@ def _run_pipeline():
     finally:
         pipeline_state["running"] = False
         pipeline_state["status"]  = "off"
-        print("\n🛑 Voice pipeline stopped.")
+        print("\nVoice pipeline stopped.")
 
 # ── Public API ────────────────────────────────────────────────
 def start_pipeline():

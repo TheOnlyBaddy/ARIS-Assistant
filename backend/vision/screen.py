@@ -29,7 +29,7 @@ MAX_WIDTH      = 1280
 JPEG_QUALITY   = 85
 os.makedirs(SCREENSHOT_DIR, exist_ok=True)
 
-print("✅ Gemini Vision ready (gemini-2.5-flash, fast mode)")
+print("Gemini Vision ready (gemini-2.5-flash, fast mode)")
 
 # ── Capture screenshot ────────────────────────────────────────
 def capture_screen(monitor_index: int = 1) -> tuple[Image.Image, str]:
@@ -74,7 +74,7 @@ def analyze_screen(prompt: str = None, monitor_index: int = 1) -> dict:
 
     Returns dict with description, screenshot path, model used, timing.
     """
-    print("📸 Capturing screen...")
+    print("Capturing screen...")
     img, path = capture_screen(monitor_index)
     print(f"   Screenshot: {img.width}x{img.height}px → {path}")
 
@@ -84,14 +84,16 @@ def analyze_screen(prompt: str = None, monitor_index: int = 1) -> dict:
             "You are ARIS, a personal AI assistant analyzing the user's screen. "
             "Describe what you see concisely and helpfully in 2-3 sentences. "
             "Focus on: what application is open, what content is visible, "
-            "and anything that might help the user."
+            "and anything that might help the user. "
+            "Never address the user by name; always use 'boss' or 'sir'."
         )
     else:
         vision_prompt = (
             f"You are ARIS, a personal AI assistant analyzing the user's screen. "
             f"The user asks: '{prompt}'. "
             f"Answer based only on what you can see on the screen. "
-            f"Be concise and direct."
+            f"Be concise and direct. "
+            f"Never address the user by name; always use 'boss' or 'sir'."
         )
 
     img_bytes = _image_to_bytes(img)
@@ -100,7 +102,7 @@ def analyze_screen(prompt: str = None, monitor_index: int = 1) -> dict:
     last_error = None
     for model_name in VISION_MODELS:
         try:
-            print(f"🔍 Sending to {model_name}...")
+            print(f"Sending to {model_name}...")
             start = time.time()
 
             response = _client.models.generate_content(
@@ -118,7 +120,7 @@ def analyze_screen(prompt: str = None, monitor_index: int = 1) -> dict:
 
             elapsed     = time.time() - start
             description = response.text.strip()
-            print(f"✅ Vision response in {elapsed:.1f}s")
+            print(f"Vision response in {elapsed:.1f}s")
 
             return {
                 "description" : description,
@@ -130,7 +132,7 @@ def analyze_screen(prompt: str = None, monitor_index: int = 1) -> dict:
 
         except Exception as e:
             err_short = str(e)[:100]
-            print(f"   ⚠️  {model_name} failed: {err_short}")
+            print(f"   {model_name} failed: {err_short}")
             last_error = e
             continue
 

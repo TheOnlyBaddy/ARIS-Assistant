@@ -6,8 +6,11 @@ Handles SQLite storage of all conversations using SQLAlchemy ORM.
 from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-from datetime import datetime
+from datetime import datetime, timezone
 import os
+
+def utc_now():
+    return datetime.now(timezone.utc)
 
 # ─── DATABASE SETUP ────────────────────────────────────────────────────────────
 
@@ -41,7 +44,7 @@ class ConversationMessage(Base):
     role       = Column(String(10), nullable=False)                 # "user" or "model"
     text       = Column(Text, nullable=False)                       # The message content
     model_used = Column(String(50), nullable=True)                  # Which AI model replied (for model turns)
-    timestamp  = Column(DateTime, default=datetime.utcnow)         # When it was sent
+    timestamp  = Column(DateTime, default=utc_now)         # When it was sent
 
     def __repr__(self):
         preview = self.text[:40] + "..." if len(self.text) > 40 else self.text
@@ -57,8 +60,8 @@ class SessionSummary(Base):
 
     id           = Column(Integer, primary_key=True, index=True, autoincrement=True)
     session_id   = Column(String(100), unique=True, index=True, nullable=False)
-    created_at   = Column(DateTime, default=datetime.utcnow)
-    last_active  = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at   = Column(DateTime, default=utc_now)
+    last_active  = Column(DateTime, default=utc_now, onupdate=utc_now)
     message_count = Column(Integer, default=0)
 
     def __repr__(self):
@@ -111,7 +114,7 @@ def save_message(session_id: str, role: str, text: str, model_used: str = None):
 
         if summary:
             summary.message_count += 1
-            summary.last_active = datetime.utcnow()
+            summary.last_active = utc_now()
         else:
             summary = SessionSummary(
                 session_id=session_id,

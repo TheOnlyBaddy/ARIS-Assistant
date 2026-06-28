@@ -1,4 +1,4 @@
-# ARIS/control/browser.py
+# ARIS/control/pc/software/browser.py
 """
 Browser Automation module for ARIS — Windows 11
 Each operation runs Playwright in its own dedicated thread with a persistent
@@ -11,7 +11,7 @@ import queue
 from datetime import datetime
 from playwright.sync_api import sync_playwright
 
-SCREENSHOT_DIR = os.path.join(os.path.dirname(__file__), "..", "vision", "screenshots")
+SCREENSHOT_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "vision", "screenshots")
 os.makedirs(SCREENSHOT_DIR, exist_ok=True)
 
 # ── Single dedicated browser thread ───────────────────────────────────────────

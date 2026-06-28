@@ -6,19 +6,22 @@ Phase 4 - Device & Computer Control
 
 from fastapi import FastAPI, HTTPException, Request, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, StreamingResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from typing import Any, Optional
 import uvicorn
 import os
+import time
 import sys
+import subprocess
 import httpx
 import threading
 import json
 from google import genai
 from google.genai import types
 import asyncio
+from contextlib import asynccontextmanager
 import whisper as _whisper
 import tempfile
 import shutil
@@ -101,28 +104,25 @@ from vision.ocr import ocr_screen, ocr_camera, ocr_file
 from vision.screen import analyze_screen, describe_screen
 
 # ── Phase 4: PC Control ───────────────────────────────────────────────────────
-from control.pc import (
+from control.pc.software import (
     move_mouse, click, double_click, right_click, scroll,
     type_text, press_key, hotkey, open_app, close_window,
     minimize_window, maximize_window, focus_window,
-    list_open_windows, take_screenshot, clipboard_read, clipboard_write
-)
-from control.files import (
+    list_open_windows, take_screenshot, clipboard_read, clipboard_write,
     list_directory, create_file, create_folder,
     read_file, write_file, rename, move, copy,
-    delete, search_files, open_file, open_in_explorer, get_file_info
-)
-from control.system import (
-    get_stats, get_cpu, get_ram, get_disk,
-    get_battery, list_processes, kill_process, get_network
-)
-from fastapi.responses import RedirectResponse, StreamingResponse
-from control.browser import (
+    delete, search_files, open_file, open_in_explorer, get_file_info,
     open_url, search_google, click_element,
     fill_field, get_page_text, browser_screenshot,
-    get_page_info, close_browser
+    get_page_info, close_browser,
+    send_notification, get_notification_history, clear_notification_history
 )
-from control.notify import send_notification, get_notification_history, clear_notification_history
+from control.pc.hardware import (
+    get_stats, get_cpu, get_ram, get_disk,
+    get_battery, list_processes, kill_process, get_network,
+    media_control, set_brightness, lock_pc, sleep_pc,
+    shutdown_pc, restart_pc, cancel_shutdown, get_network_diagnostics
+)
 
 load_dotenv()
 
@@ -146,36 +146,52 @@ ARIS_BASE_PROMPT = (
     "Refer to yourself as ARIS, never as Gemini or any other AI. "
     "You have short-term conversation memory, long-term database memory, "
     "and semantic memory of important facts. "
-    "Always adapt your tone and style to match the user profile below."
+    "Always adapt your tone and style to match the user profile below. "
+    "CRITICAL RULE: Never address the user by their actual name (such as Shubh, User, etc.). "
+    "Instead, always address them as 'boss' or 'sir'."
 )
 
 # ─── IN-MEMORY STORE ───────────────────────────────────────────────────────────
 
 conversation_store: dict[str, list[dict]] = {}
-
-# ─── FASTAPI APP ───────────────────────────────────────────────────────────────
-
-app = FastAPI(
-    title="ARIS - Autonomous Reasoning & Intelligence System",
-    description="Your personal AI assistant backend",
-    version="4.0.0"
-)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:5173"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-app.include_router(auth_router)
+gemini_cooldown_until: float = 0.0
 
 # ─── STARTUP ───────────────────────────────────────────────────────────────────
 
-@app.on_event("startup")
-async def startup():
+def ensure_ollama_running():
+    ollama_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    try:
+        # Ping Ollama base URL
+        r = httpx.get(ollama_url, timeout=1.0)
+        if r.status_code == 200:
+            print("[ARIS Startup] Ollama is running.")
+            return
+    except Exception:
+        pass
+
+    # Ollama is not responding. Let's try to start it.
+    print("[ARIS Startup] Ollama is not running. Checking if 'ollama' is installed...")
+    ollama_bin = shutil.which("ollama")
+    if ollama_bin:
+        print(f"[ARIS Startup] Found Ollama binary. Auto-launching 'ollama serve' in background...")
+        try:
+            subprocess.Popen(
+                "ollama serve",
+                shell=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+            print("[ARIS Startup] Ollama process spawned successfully.")
+        except Exception as e:
+            print(f"[ARIS Startup] Failed to auto-launch Ollama: {e}")
+    else:
+        print("[ARIS Startup] WARNING: 'ollama' command not found in system PATH. Please launch Ollama manually.")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     print("[ARIS] Starting up...")
+    ensure_ollama_running()
     init_db()
     global conversation_store
     conversation_store = load_all_sessions_from_db()
@@ -188,6 +204,29 @@ async def startup():
           f"Memories: {stats['total_memories']} | "
           f"Trust level: {safety['trust_level']} | "
           f"Google: {google}")
+    try:
+        yield
+    except (asyncio.CancelledError, KeyboardInterrupt):
+        pass
+
+# ─── FASTAPI APP ───────────────────────────────────────────────────────────────
+
+app = FastAPI(
+    title="ARIS - Autonomous Reasoning & Intelligence System",
+    description="Your personal AI assistant backend",
+    version="4.0.0",
+    lifespan=lifespan
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://localhost:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(auth_router)
 
 # ─── REQUEST / RESPONSE MODELS ─────────────────────────────────────────────────
 
@@ -248,6 +287,20 @@ class ClipboardWriteRequest(BaseModel):
 
 class ScreenshotRequest(BaseModel):
     filename: Optional[str] = None
+
+class MediaRequest(BaseModel):
+    action: str
+    level: Optional[int] = None
+
+class BrightnessRequest(BaseModel):
+    level: int
+
+class PowerRequest(BaseModel):
+    action: str
+    confirmed: Optional[bool] = False
+
+class WindowSnapRequest(BaseModel):
+    direction: str
 
 # ─── REQUEST MODELS (same as before) ─────────────────────────────────────────
  
@@ -358,6 +411,12 @@ async def ask_gemini_with_context(
     if integration_data and integration_data.get("type") not in ("general_chat", "none", None):
         data_str  = json.dumps(integration_data["data"], indent=2, default=str)
         data_type = integration_data["type"]
+        profile = load_profile()
+        user_name = profile.get("preferred_name", profile.get("name", "User"))
+        app_name = ""
+        if isinstance(integration_data.get("data"), dict):
+            app_name = integration_data["data"].get("app", "")
+
         context_prompts = {
             "emails":         f"Here are the emails retrieved:\n{data_str}\nSummarize them clearly and concisely for the user.",
             "events":         f"Here are the calendar events retrieved from Google Calendar:\n{data_str}\nPresent them clearly. IMPORTANT: If the list is empty [], tell the user their calendar is clear — do NOT invent or hallucinate any events.",
@@ -370,11 +429,12 @@ async def ask_gemini_with_context(
             "people":         f"Here are contacts who haven't been reached recently:\n{data_str}\nPresent them with a friendly nudge.",
             "birthdays":      f"Here are upcoming birthdays:\n{data_str}\nPresent them warmly.",
             "error":          f"An error occurred: {integration_data['data']}\nTell the user something went wrong and suggest they try again.",
-            "pc_action"          : f"PC control action result:\n{data_str}\nConfirm to the user what was done in a friendly way.",
+            "pc_action"          : f"PC control action result:\n{data_str}\nKeep your response extremely short and simple. Say only something like 'done boss', 'ok boss', or 'alright boss'. Do NOT describe details, paths, or executables.",
             "system_stats"       : f"System health data:\n{data_str}\nPresent the key stats clearly — CPU %, RAM %, battery, disk. Flag anything high.",
             "files"              : f"File operation result:\n{data_str}\nConfirm what was done or list the files clearly.",
             "browser"            : f"Browser action result:\n{data_str}\nSummarize what was found or confirm the action.",
             "needs_confirmation" : f"This action needs user confirmation:\n{data_str}\nAsk the user to confirm before proceeding.",
+            "app_not_found"      : f"Say exactly: 'Boss, I didnt find any application or app name {app_name} mind you say it again'",
         }
         context   = context_prompts.get(data_type, f"Integration data:\n{data_str}")
         augmented = f"{message}\n\n[INTEGRATION RESULT — use this to answer]\n{context}"
@@ -407,6 +467,12 @@ async def ask_ollama_with_context(
     if integration_data and integration_data.get("type") not in ("general_chat", "none", None):
         data_str  = json.dumps(integration_data["data"], indent=2, default=str)
         data_type = integration_data["type"]
+        profile = load_profile()
+        user_name = profile.get("preferred_name", profile.get("name", "User"))
+        app_name = ""
+        if isinstance(integration_data.get("data"), dict):
+            app_name = integration_data["data"].get("app", "")
+
         context_prompts = {
             "emails":         f"Here are the emails retrieved:\n{data_str}\nSummarize them clearly and concisely.",
             "events":         f"Here are the calendar events:\n{data_str}\nPresent them clearly. If empty [], say the calendar is clear — do NOT invent events.",
@@ -419,11 +485,12 @@ async def ask_ollama_with_context(
             "people":         f"Here are neglected contacts:\n{data_str}\nPresent with a friendly nudge.",
             "birthdays":      f"Here are upcoming birthdays:\n{data_str}\nPresent warmly.",
             "error":          f"Error: {integration_data['data']}\nTell the user something went wrong.",
-            "pc_action"          : f"PC control action result:\n{data_str}\nConfirm to the user what was done in a friendly way.",
+            "pc_action"          : f"PC control action result:\n{data_str}\nKeep your response extremely short and simple. Say only something like 'done boss', 'ok boss', or 'alright boss'. Do NOT describe details, paths, or executables.",
             "system_stats"       : f"System health data:\n{data_str}\nPresent the key stats clearly — CPU %, RAM %, battery, disk. Flag anything high.",
             "files"              : f"File operation result:\n{data_str}\nConfirm what was done or list the files clearly.",
             "browser"            : f"Browser action result:\n{data_str}\nSummarize what was found or confirm the action.",
             "needs_confirmation" : f"This action needs user confirmation:\n{data_str}\nAsk the user to confirm before proceeding.",
+            "app_not_found"      : f"Say exactly: 'Boss, I didnt find any application or app name {app_name} mind you say it again'",
         }
         context   = context_prompts.get(data_type, f"Data:\n{data_str}")
         augmented = f"{message}\n\n[DATA TO USE IN YOUR RESPONSE]\n{context}"
@@ -460,10 +527,105 @@ async def ask_ollama_with_context(
         r.raise_for_status()
         return r.json()["response"]
 
+# ─── ACTION DETAIL BUILDER ─────────────────────────────────────────────────────
+
+def _build_action_detail(data: dict, intent: str, params: dict) -> str:
+    """Build a short human-readable summary of the PC action that was performed."""
+    sub = data.get("sub_action", "")
+    action = data.get("action", intent)
+
+    # Volume / Media
+    if intent == "media_control":
+        if sub == "set_volume":
+            return f"volume set to {data.get('level', params.get('level', '?'))}"
+        if sub == "vol_up":
+            return "volume increased"
+        if sub == "vol_down":
+            return "volume decreased"
+        if sub == "mute":
+            return "volume muted"
+        if sub == "unmute":
+            return "volume unmuted"
+        if sub == "toggle_mute":
+            return "volume mute toggled"
+        if sub == "volumemute":
+            return "volume toggled mute"
+        if sub == "playpause":
+            return "playback toggled"
+        if sub == "nexttrack":
+            return "skipped to next track"
+        if sub == "prevtrack":
+            return "went to previous track"
+
+    # Brightness
+    if intent == "brightness_control":
+        level = data.get("level", params.get("level", "?"))
+        return f"brightness set to {level}"
+
+    # Power
+    if intent == "power_control":
+        pwr = params.get("action", "")
+        labels = {"lock": "PC locked", "sleep": "PC going to sleep", "shutdown": "shutting down",
+                  "restart": "restarting", "cancel": "shutdown cancelled"}
+        return labels.get(pwr, f"{pwr} done")
+
+    # Open / Close / Kill
+    if intent == "open_application":
+        act_type = data.get("action", "open_app")
+        name = data.get("name", params.get("app", "it"))
+        if act_type == "open_folder":
+            return f"{name} folder opened"
+        elif act_type == "open_file":
+            return f"{name} opened"
+        elif act_type == "open_url":
+            return f"{data.get('url', name)} opened in browser"
+        return f"{name} opened"
+    if intent == "close_application":
+        return f"{params.get('title', 'application')} closed"
+    if intent == "kill_process":
+        return f"{params.get('name', 'process')} killed"
+
+    # Screenshot
+    if intent == "take_screenshot":
+        return "screenshot captured"
+
+    # Window snap
+    if intent == "window_snap":
+        return f"window snapped {params.get('direction', '')}"
+
+    # Clipboard
+    if intent == "clipboard_write":
+        return "text copied to clipboard"
+    if intent == "clipboard_read":
+        return "clipboard read"
+
+    # Typing / Hotkey
+    if intent == "type_text":
+        return "text typed"
+    if intent == "press_hotkey":
+        return f"pressed {params.get('keys', 'hotkey')}"
+
+    # Notification
+    if intent == "send_notification":
+        return "notification sent"
+
+    # Network
+    if intent == "network_diagnostics":
+        return "network diagnostics retrieved"
+
+    # System stats / Processes
+    if intent == "get_system_stats":
+        return "system stats retrieved"
+    if intent == "list_processes":
+        return "processes listed"
+
+    return ""
+
 # ─── CHAT ROUTE ────────────────────────────────────────────────────────────────
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
+    global gemini_cooldown_until
     if not request.message.strip():
         raise HTTPException(status_code=400, detail="Message cannot be empty")
 
@@ -523,6 +685,9 @@ async def chat(request: ChatRequest):
         "browser_search", "get_person", "get_neglected_contacts",
         "get_upcoming_birthdays", "clipboard_read",
         "open_application", "take_screenshot", "pc_action",
+        "media_control", "brightness_control", "power_control",
+        "window_snap", "network_diagnostics", "send_notification",
+        "clipboard_write", "kill_process", "type_text", "press_hotkey",
     }
 
     # Complex tasks that need Gemini's reasoning power
@@ -540,6 +705,8 @@ async def chat(request: ChatRequest):
             "help me understand", "can you explain", "elaborate",
             "pros and cons", "advantages", "disadvantages",
             "definition of", "define", "meaning of",
+            "joke", "jokes", "story", "stories", "poem", "poems",
+            "draft", "write a passage", "tell a joke", "creative"
         ]
         return any(t in msg for t in triggers)
 
@@ -552,9 +719,38 @@ async def chat(request: ChatRequest):
     else:
         ollama_model = OLLAMA_CHAT_MODEL     # llama3.2 — fast for simple chat
 
+    # ── SHORT CONFIRMATION FOR SUCCESSFUL PC ACTIONS ──────────────────────────────
+    if integration_data and integration_data.get("type") == "pc_action":
+        data = integration_data.get("data", {})
+        if isinstance(data, dict) and data.get("status") == "ok":
+            import random
+            prefix = random.choice(["Ok boss", "Alright boss", "Done boss", "Done, sir", "Alright, boss"])
+            detail = _build_action_detail(data, intent, params)
+            reply = f"{prefix}, {detail}." if detail else f"{prefix}."
+            model_used = "system/direct_reply"
+            print(f"[ARIS] Direct PC action confirmation: {reply}")
+
+            add_to_memory(session_id, "model", reply, model_used)
+            await extract_and_store_facts(request.message, reply, session_id)
+
+            return ChatResponse(
+                response=reply,
+                model_used=model_used,
+                session_id=session_id,
+                turn_count=len(conversation_store[session_id]) // 2,
+                memories_used=len(relevant_memories),
+                safety_status="ok",
+                intent=intent,
+                integration_type=integration_data["type"] if integration_data else "none"
+            )
+
     # ── MODEL CALL ────────────────────────────────────────────────────────────────
 
-    use_gemini = _needs_gemini(request.message, intent)
+    is_gemini_cooldown = time.time() < gemini_cooldown_until
+    if is_gemini_cooldown:
+        print("[ARIS] Gemini is in cooldown. Bypassing cloud call and routing to Ollama.")
+
+    use_gemini = _needs_gemini(request.message, intent) and not is_gemini_cooldown
 
     try:
         if use_gemini:
@@ -570,6 +766,11 @@ async def chat(request: ChatRequest):
                 print(f"[ARIS] Gemini (complex) | Session: '{session_id}' | Intent: {intent}")
 
             except Exception as gemini_error:
+                err_str = str(gemini_error).upper()
+                if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str or "QUOTA" in err_str:
+                    print("[ARIS] Gemini rate limit reached! Activating 5-minute local fallback cooldown...")
+                    gemini_cooldown_until = time.time() + 300.0
+
                 print(f"[ARIS] Gemini failed: {gemini_error}. Falling back to Ollama...")
                 reply      = await ask_ollama_with_context(
                     message=request.message,
@@ -1055,14 +1256,15 @@ async def daily_briefing():
 
         briefing_json  = json.dumps(briefing_data, indent=2, default=str)
         summary_prompt = f"""
-You are ARIS, a personal AI assistant. Generate a warm, concise morning briefing for {name}.
+You are ARIS, a personal AI assistant. Generate a warm, concise morning briefing for the user.
+CRITICAL: Never address the user by their actual name ({name}). Instead, always address them as 'boss' or 'sir'.
 
 Today is {date_str}. Here is all the data:
 
 {briefing_json}
 
 Write a friendly {greeting} message that:
-1. Greets {name} warmly
+1. Greets the user warmly as 'boss' or 'sir' (do NOT use their actual name)
 2. Summarizes today's calendar (or says it's clear)
 3. Highlights important emails if any
 4. Mentions tasks due today and any overdue ones
@@ -1315,6 +1517,50 @@ async def pc_clipboard_write(req: ClipboardWriteRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/control/pc/media")
+async def pc_media(req: MediaRequest):
+    try:
+        return media_control(req.action, req.level)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/control/pc/brightness")
+async def pc_brightness(req: BrightnessRequest):
+    try:
+        return set_brightness(req.level)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/control/pc/power")
+async def pc_power(req: PowerRequest):
+    try:
+        act = req.action.lower().strip()
+        if act == "lock":
+            return lock_pc()
+        elif act == "sleep":
+            return sleep_pc()
+        elif act == "shutdown":
+            return shutdown_pc(req.confirmed)
+        elif act == "restart":
+            return restart_pc(req.confirmed)
+        elif act in ("cancel", "abort"):
+            return cancel_shutdown()
+        else:
+            raise HTTPException(status_code=400, detail=f"Unknown power action '{req.action}'")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/control/pc/window/snap")
+async def pc_window_snap(req: WindowSnapRequest):
+    try:
+        return snap_window(req.direction)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ─── ADD REQUEST MODELS (after PC control models) ─────────────────────────────
 
 class ListDirRequest(BaseModel):
@@ -1550,6 +1796,14 @@ async def system_battery():
 async def system_network():
     try:
         return get_network()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/control/system/network/diagnostics")
+async def system_network_diagnostics():
+    try:
+        return get_network_diagnostics()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
  

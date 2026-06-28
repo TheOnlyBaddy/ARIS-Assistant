@@ -9,7 +9,7 @@ import httpx
 import json
 import os
 import hashlib
-from datetime import datetime
+from datetime import datetime, timezone
 
 # ─── CHROMADB SETUP ────────────────────────────────────────────────────────────
 
@@ -77,7 +77,7 @@ async def store_memory(fact: str, session_id: str, metadata: dict = None):
 
         mem_metadata = {
             "session_id": session_id,
-            "timestamp" : datetime.utcnow().isoformat(),
+            "timestamp" : datetime.now(timezone.utc).isoformat(),
             "fact"      : fact
         }
         if metadata:

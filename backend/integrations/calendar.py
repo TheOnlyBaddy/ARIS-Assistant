@@ -4,6 +4,7 @@
 from datetime import datetime, timedelta, timezone
 import re
 from auth.google_auth import get_calendar_service
+from user_profile import load_profile
 
 
 # ─── HELPERS ───────────────────────────────────────────────────────────────────
@@ -103,17 +104,23 @@ def create_event(
     """
     service = get_calendar_service()
 
+    try:
+        profile = load_profile()
+        tz = profile.get("timezone", "Asia/Kolkata")
+    except Exception:
+        tz = "Asia/Kolkata"
+
     event_body = {
         "summary":     title,
         "description": description,
         "location":    location,
         "start": {
             "dateTime": start_time,
-            "timeZone": "Asia/Kolkata",   # IST — matches your timezone
+            "timeZone": tz,
         },
         "end": {
             "dateTime": end_time,
-            "timeZone": "Asia/Kolkata",
+            "timeZone": tz,
         },
     }
 

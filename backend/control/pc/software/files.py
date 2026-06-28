@@ -1,4 +1,4 @@
-# ARIS/control/files.py
+# ARIS/control/pc/software/files.py
 """
 File & Folder Management module for ARIS — Windows 11
 Handles: list, create, rename, move, delete, search, read, open
@@ -14,8 +14,26 @@ from typing import Optional
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _expand(path: str) -> str:
-    """Expand ~ and environment variables, return absolute path string."""
-    return str(Path(os.path.expandvars(os.path.expanduser(path))).resolve())
+    """Expand ~ and environment variables, return absolute path string, checking OneDrive redirects."""
+    p = path.strip().strip('"').strip("'")
+    
+    try:
+        from control.pc.software.folder import FOLDER_MAP
+        p_lower = p.lower()
+        if p_lower in FOLDER_MAP:
+            return FOLDER_MAP[p_lower]
+        
+        if p.startswith("~"):
+            # Split off the ~ prefix
+            parts = p.split("/", 1) if "/" in p else p.split("\\", 1)
+            if len(parts) > 1:
+                sub = parts[1].lower()
+                if sub in FOLDER_MAP:
+                    return FOLDER_MAP[sub]
+    except Exception:
+        pass
+
+    return str(Path(os.path.expandvars(os.path.expanduser(p))).resolve())
 
 
 def _size_label(bytes: int) -> str:

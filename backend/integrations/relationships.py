@@ -2,6 +2,7 @@
 # Relationship memory — store and recall people ARIS knows about
 # Built on top of ChromaDB (already used for semantic memory)
 
+import os
 import json
 import chromadb
 from datetime import date, datetime
@@ -12,8 +13,10 @@ from chromadb.utils import embedding_functions
 COLLECTION_NAME = "aris_relationships"
 
 def _get_collection():
-    """Get or create the relationships ChromaDB collection."""
-    client = chromadb.PersistentClient(path="./chroma_db")
+    """Get or create the relationships ChromaDB collection with absolute path."""
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    CHROMA_PATH = os.path.join(BASE_DIR, "chroma_db")
+    client = chromadb.PersistentClient(path=CHROMA_PATH)
     ef = embedding_functions.OllamaEmbeddingFunction(
         url="http://localhost:11434/api/embeddings",
         model_name="nomic-embed-text"
@@ -47,71 +50,75 @@ def save_person(
         last_contact: ISO date string of last interaction
         contact_info: Phone/email/social
     """
-    collection = _get_collection()
+    try:
+        collection = _get_collection()
+        person_id = f"person_{name.lower().replace(' ', '_')}"
 
-    person_id = f"person_{name.lower().replace(' ', '_')}"
+        # Build a rich text document for semantic search
+        doc_text = f"""
+        Person: {name}
+        Relationship: {relationship}
+        Birthday: {birthday or 'unknown'}
+        Notes: {notes}
+        Preferences: {preferences}
+        Contact: {contact_info}
+        Last contact: {last_contact or 'unknown'}
+        """.strip()
 
-    # Build a rich text document for semantic search
-    doc_text = f"""
-    Person: {name}
-    Relationship: {relationship}
-    Birthday: {birthday or 'unknown'}
-    Notes: {notes}
-    Preferences: {preferences}
-    Contact: {contact_info}
-    Last contact: {last_contact or 'unknown'}
-    """.strip()
+        metadata = {
+            "name":         name,
+            "relationship": relationship,
+            "birthday":     birthday     or "",
+            "notes":        notes,
+            "preferences":  preferences,
+            "last_contact": last_contact or "",
+            "contact_info": contact_info,
+            "updated_at":   date.today().isoformat(),
+        }
 
-    metadata = {
-        "name":         name,
-        "relationship": relationship,
-        "birthday":     birthday     or "",
-        "notes":        notes,
-        "preferences":  preferences,
-        "last_contact": last_contact or "",
-        "contact_info": contact_info,
-        "updated_at":   date.today().isoformat(),
-    }
+        # Upsert — add if new, update if exists
+        collection.upsert(
+            ids=[person_id],
+            documents=[doc_text],
+            metadatas=[metadata]
+        )
+        return {"status": "saved", "person_id": person_id, "name": name}
 
-    # Upsert — add if new, update if exists
-    collection.upsert(
-        ids=[person_id],
-        documents=[doc_text],
-        metadatas=[metadata]
-    )
-
-    return {"status": "saved", "person_id": person_id, "name": name}
+    except Exception as e:
+        print(f"[ARIS Relationships] Save failed (Ollama/Chroma down?): {e}")
+        return {"status": "error", "error": "Relationship database or embedding service is currently offline."}
 
 
 # ─── GET PERSON ────────────────────────────────────────────────────────────────
 
 def get_person(name: str) -> dict | None:
     """Fetch a person by exact name."""
-    collection = _get_collection()
-    person_id  = f"person_{name.lower().replace(' ', '_')}"
-
     try:
+        collection = _get_collection()
+        person_id  = f"person_{name.lower().replace(' ', '_')}"
         result = collection.get(ids=[person_id])
         if result and result["ids"]:
             return result["metadatas"][0]
-        return None
-    except Exception:
-        return None
+    except Exception as e:
+        print(f"[ARIS Relationships] Get failed: {e}")
+    return None
 
 
 # ─── GET ALL PEOPLE ────────────────────────────────────────────────────────────
 
 def get_all_people() -> list[dict]:
     """Fetch all people stored in relationship memory."""
-    collection = _get_collection()
-    result     = collection.get()
-
-    people = []
-    for i, pid in enumerate(result["ids"]):
-        meta = result["metadatas"][i]
-        people.append(meta)
-
-    return people
+    try:
+        collection = _get_collection()
+        result     = collection.get()
+        people = []
+        for i, pid in enumerate(result["ids"]):
+            meta = result["metadatas"][i]
+            people.append(meta)
+        return people
+    except Exception as e:
+        print(f"[ARIS Relationships] Get all failed: {e}")
+        return []
 
 
 # ─── SEARCH PEOPLE ─────────────────────────────────────────────────────────────
@@ -121,9 +128,8 @@ def search_people(query: str, n_results: int = 3) -> list[dict]:
     Semantic search across relationship memory.
     e.g. "who likes cricket" or "my college friends"
     """
-    collection = _get_collection()
-
     try:
+        collection = _get_collection()
         results = collection.query(
             query_texts=[query],
             n_results=min(n_results, collection.count())
@@ -131,7 +137,8 @@ def search_people(query: str, n_results: int = 3) -> list[dict]:
         if not results["ids"][0]:
             return []
         return results["metadatas"][0]
-    except Exception:
+    except Exception as e:
+        print(f"[ARIS Relationships] Search failed (Ollama/Chroma down?): {e}")
         return []
 
 
@@ -139,10 +146,14 @@ def search_people(query: str, n_results: int = 3) -> list[dict]:
 
 def delete_person(name: str) -> dict:
     """Remove a person from relationship memory."""
-    collection = _get_collection()
-    person_id  = f"person_{name.lower().replace(' ', '_')}"
-    collection.delete(ids=[person_id])
-    return {"status": "deleted", "name": name}
+    try:
+        collection = _get_collection()
+        person_id  = f"person_{name.lower().replace(' ', '_')}"
+        collection.delete(ids=[person_id])
+        return {"status": "deleted", "name": name}
+    except Exception as e:
+        print(f"[ARIS Relationships] Delete failed: {e}")
+        return {"status": "error", "error": str(e)}
 
 
 # ─── UPDATE LAST CONTACT ───────────────────────────────────────────────────────
