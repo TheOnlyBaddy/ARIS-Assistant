@@ -3,6 +3,9 @@ import axios from 'axios'
 import './App.css'
 import GoogleAuthButton from "./components/GoogleAuthButton"
 import SystemDashboard from "./components/SystemDashboard"
+import IntelligenceDashboard from "./components/IntelligenceDashboard"
+import LifeDashboard from "./components/LifeDashboard"
+import CreativeDashboard from "./components/CreativeDashboard"
 
 const API_BASE = window.location.hostname
   ? `http://${window.location.hostname}:8000`
@@ -179,6 +182,21 @@ function Message({ msg }) {
           </div>
         )}
         <p>{formatText(msg.text)}</p>
+        {(() => {
+          const imgMatch = msg.text?.match(/(\/output\/images\/gen_\d+\.jpg)/);
+          if (imgMatch) {
+            return (
+              <div style={{ marginTop: '10px', textAlign: 'center' }}>
+                <img
+                  src={`${API_BASE}${imgMatch[0]}`}
+                  alt="Generated visual"
+                  style={{ maxWidth: '100%', maxHeight: '300px', borderRadius: '6px', border: '1px solid #1e293b' }}
+                />
+              </div>
+            )
+          }
+          return null;
+        })()}
         {msg.model_used && msg.model_used !== 'safety-filter' && (
           <span className="meta">
             {msg.model_used} · {msg.memories_used} mem
@@ -760,6 +778,24 @@ export default function App() {
             💬 Chat
           </button>
           <button
+            className={`tab-btn ${activeTab === "intelligence" ? "active" : ""}`}
+            onClick={() => setActiveTab("intelligence")}
+          >
+            💡 Intelligence
+          </button>
+          <button
+            className={`tab-btn ${activeTab === "life" ? "active" : ""}`}
+            onClick={() => setActiveTab("life")}
+          >
+            🏥 Life
+          </button>
+          <button
+            className={`tab-btn ${activeTab === "creative" ? "active" : ""}`}
+            onClick={() => setActiveTab("creative")}
+          >
+            🎨 Creative
+          </button>
+          <button
             className={`tab-btn ${activeTab === "system" ? "active" : ""}`}
             onClick={() => setActiveTab("system")}
           >
@@ -767,7 +803,10 @@ export default function App() {
           </button>
         </div>
 
-        {/* System dashboard — shown when system tab active */}
+        {/* Dashboards */}
+        <IntelligenceDashboard visible={activeTab === "intelligence"} apiBase={API_BASE} />
+        <LifeDashboard visible={activeTab === "life"} apiBase={API_BASE} />
+        <CreativeDashboard visible={activeTab === "creative"} apiBase={API_BASE} />
         <SystemDashboard visible={activeTab === "system"} />
 
         {/* Wrap existing chat content so it hides when system tab is open */}

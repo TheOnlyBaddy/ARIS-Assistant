@@ -228,6 +228,12 @@ app.add_middleware(
 
 app.include_router(auth_router)
 
+from fastapi.staticfiles import StaticFiles
+# Create output directory if not exists
+output_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "output")
+os.makedirs(os.path.join(output_dir, "images"), exist_ok=True)
+app.mount("/output", StaticFiles(directory=output_dir), name="output")
+
 # ─── REQUEST / RESPONSE MODELS ─────────────────────────────────────────────────
 
 class ChatRequest(BaseModel):
@@ -435,6 +441,15 @@ async def ask_gemini_with_context(
             "browser"            : f"Browser action result:\n{data_str}\nSummarize what was found or confirm the action.",
             "needs_confirmation" : f"This action needs user confirmation:\n{data_str}\nAsk the user to confirm before proceeding.",
             "app_not_found"      : f"Say exactly: 'Boss, I didnt find any application or app name {app_name} mind you say it again'",
+            "knowledge"          : f"Knowledge base results:\n{data_str}\nProvide a friendly response using this information.",
+            "code"               : f"Code tool result:\n{data_str}\nShow the code or execution output clearly.",
+            "habits"             : f"Habit tracker result:\n{data_str}\nSummarize completion status or streaks warmly.",
+            "health"             : f"Health log/trends result:\n{data_str}\nPresent stats or trends summary clearly.",
+            "finance"            : f"Finance log/budgets result:\n{data_str}\nPresent transaction confirmation or budget details clearly.",
+            "meals"              : f"Meal planning result:\n{data_str}\nPresent suggestions or meal plan clearly.",
+            "tutor"              : f"Personal tutor lesson/quiz result:\n{data_str}\nHelp the student with this lesson or quiz content.",
+            "writing"            : f"Creative writing output:\n{data_str}\nShow the generated content clearly.",
+            "image"              : f"Image generator output:\n{data_str}\nShow the status and download path of the generated image.",
         }
         context   = context_prompts.get(data_type, f"Integration data:\n{data_str}")
         augmented = f"{message}\n\n[INTEGRATION RESULT — use this to answer]\n{context}"
@@ -491,6 +506,15 @@ async def ask_ollama_with_context(
             "browser"            : f"Browser action result:\n{data_str}\nSummarize what was found or confirm the action.",
             "needs_confirmation" : f"This action needs user confirmation:\n{data_str}\nAsk the user to confirm before proceeding.",
             "app_not_found"      : f"Say exactly: 'Boss, I didnt find any application or app name {app_name} mind you say it again'",
+            "knowledge"          : f"Knowledge base results:\n{data_str}\nProvide a friendly response using this information.",
+            "code"               : f"Code tool result:\n{data_str}\nShow the code or execution output clearly.",
+            "habits"             : f"Habit tracker result:\n{data_str}\nSummarize completion status or streaks warmly.",
+            "health"             : f"Health log/trends result:\n{data_str}\nPresent stats or trends summary clearly.",
+            "finance"            : f"Finance log/budgets result:\n{data_str}\nPresent transaction confirmation or budget details clearly.",
+            "meals"              : f"Meal planning result:\n{data_str}\nPresent suggestions or meal plan clearly.",
+            "tutor"              : f"Personal tutor lesson/quiz result:\n{data_str}\nHelp the student with this lesson or quiz content.",
+            "writing"            : f"Creative writing output:\n{data_str}\nShow the generated content clearly.",
+            "image"              : f"Image generator output:\n{data_str}\nShow the status and download path of the generated image.",
         }
         context   = context_prompts.get(data_type, f"Data:\n{data_str}")
         augmented = f"{message}\n\n[DATA TO USE IN YOUR RESPONSE]\n{context}"
@@ -1974,7 +1998,418 @@ async def system_stream():
             "Access-Control-Allow-Origin": "*",
         }
     )
+
+
+# ── Intelligence: Search ────────────────────────────────────────────────────
+from intelligence.search import web_search, deep_research, fact_check
+from intelligence.knowledge import add_document, search_knowledge, list_documents, delete_document
+
+@app.post("/intelligence/search")
+async def route_web_search(request: Request):
+    body = await request.json()
+    query = body.get("query", "").strip()
+    mode = body.get("mode", "quick")  # "quick" | "deep" | "factcheck"
+    if not query:
+        raise HTTPException(status_code=400, detail="query required")
+    if mode == "deep":
+        result = await deep_research(query)
+    elif mode == "factcheck":
+        result = await fact_check(query)
+    else:
+        result = await web_search(query)
+    return result
+
+# ── Intelligence: Knowledge Base ─────────────────────────────────────────────
+
+@app.post("/intelligence/knowledge/add")
+async def route_knowledge_add(request: Request):
+    body = await request.json()
+    source_type = body.get("type", "").strip()
+    content = body.get("content", "").strip()
+    title = body.get("title", "").strip()
+    if not source_type or not content:
+        raise HTTPException(status_code=400, detail="type and content are required")
+    return await add_document(source_type, content, title)
+
+@app.post("/intelligence/knowledge/search")
+async def route_knowledge_search(request: Request):
+    body = await request.json()
+    query = body.get("query", "").strip()
+    limit = body.get("limit", 4)
+    if not query:
+        raise HTTPException(status_code=400, detail="query is required")
+    results = await search_knowledge(query, limit)
+    return {"results": results}
+
+@app.get("/intelligence/knowledge/list")
+async def route_knowledge_list():
+    return {"documents": list_documents()}
+
+@app.delete("/intelligence/knowledge/delete")
+async def route_knowledge_delete(request: Request):
+    body = await request.json()
+    source = body.get("source", "").strip()
+    if not source:
+        raise HTTPException(status_code=400, detail="source is required")
+    return delete_document(source)
+
+# ── Intelligence: Code Assistant & Sandbox ───────────────────────────────────
+from intelligence.code import generate_code, debug_code, execute_python
+
+@app.post("/intelligence/code/generate")
+async def route_code_generate(request: Request):
+    body = await request.json()
+    description = body.get("description", "").strip()
+    language = body.get("language", "python").strip()
+    if not description:
+        raise HTTPException(status_code=400, detail="description is required")
+    return await generate_code(description, language)
+
+@app.post("/intelligence/code/debug")
+async def route_code_debug(request: Request):
+    body = await request.json()
+    code = body.get("code", "").strip()
+    error = body.get("error", "").strip()
+    language = body.get("language", "python").strip()
+    if not code:
+        raise HTTPException(status_code=400, detail="code is required")
+    return await debug_code(code, error, language)
+
+@app.post("/intelligence/code/execute")
+async def route_code_execute(request: Request):
+    body = await request.json()
+    code = body.get("code", "").strip()
+    timeout = body.get("timeout", 10)
+    if not code:
+        raise HTTPException(status_code=400, detail="code is required")
+    return execute_python(code, timeout)
+
+# ── Life: Goal & Habit Tracker ───────────────────────────────────────────────
+from life.habits import (
+    create_habit, list_habits, delete_habit,
+    log_habit, get_habit_status, get_all_streaks,
+    create_goal, list_goals, update_goal_progress, delete_goal
+)
+
+@app.post("/life/habits/create")
+async def route_create_habit(request: Request):
+    body = await request.json()
+    name = body.get("name", "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="name is required")
+    return create_habit(
+        name,
+        body.get("description", ""),
+        body.get("target", ""),
+        body.get("frequency", "daily")
+    )
+
+@app.get("/life/habits/list")
+async def route_list_habits():
+    return {"habits": list_habits()}
+
+@app.delete("/life/habits/delete")
+async def route_delete_habit(request: Request):
+    body = await request.json()
+    habit_id = body.get("id")
+    if not habit_id:
+        raise HTTPException(status_code=400, detail="id is required")
+    return delete_habit(habit_id)
+
+@app.post("/life/habits/log")
+async def route_log_habit(request: Request):
+    body = await request.json()
+    habit_id = body.get("habit_id")
+    if not habit_id:
+        raise HTTPException(status_code=400, detail="habit_id is required")
+    return log_habit(habit_id, body.get("date", ""), body.get("notes", ""))
+
+@app.get("/life/habits/status/{habit_id}")
+async def route_habit_status(habit_id: int):
+    return get_habit_status(habit_id)
+
+@app.get("/life/habits/streaks")
+async def route_all_streaks():
+    return {"streaks": get_all_streaks()}
+
+@app.post("/life/goals/create")
+async def route_create_goal(request: Request):
+    body = await request.json()
+    name = body.get("name", "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="name is required")
+    return create_goal(
+        name,
+        body.get("description", ""),
+        body.get("target_date", ""),
+        body.get("metric", "")
+    )
+
+@app.get("/life/goals/list")
+async def route_list_goals():
+    return {"goals": list_goals()}
+
+@app.post("/life/goals/progress")
+async def route_update_goal_progress(request: Request):
+    body = await request.json()
+    goal_id = body.get("id")
+    progress = body.get("progress")
+    if goal_id is None or progress is None:
+        raise HTTPException(status_code=400, detail="id and progress are required")
+    return update_goal_progress(goal_id, float(progress))
+
+@app.delete("/life/goals/delete")
+async def route_delete_goal(request: Request):
+    body = await request.json()
+    goal_id = body.get("id")
+    if not goal_id:
+        raise HTTPException(status_code=400, detail="id is required")
+    return delete_goal(goal_id)
+
+# ── Life: Health & Wellbeing ─────────────────────────────────────────────────
+from life.health import log_health, get_health_log, get_health_history, analyze_trends, get_health_summary
+
+@app.post("/life/health/log")
+async def route_log_health(request: Request):
+    body = await request.json()
+    return log_health(
+        log_date=body.get("date", ""),
+        sleep_hours=body.get("sleep_hours"),
+        mood=body.get("mood"),
+        energy=body.get("energy"),
+        water_litres=body.get("water_litres"),
+        exercise_mins=body.get("exercise_mins"),
+        exercise_type=body.get("exercise_type", ""),
+        notes=body.get("notes", "")
+    )
+
+@app.get("/life/health/today")
+async def route_health_today():
+    return get_health_log()
+
+@app.get("/life/health/history")
+async def route_health_history(days: int = 7):
+    return {"history": get_health_history(days)}
+
+@app.get("/life/health/summary")
+async def route_health_summary():
+    return await get_health_summary()
+
+@app.get("/life/health/trends")
+async def route_health_trends(days: int = 7):
+    return await analyze_trends(days)
+
+# ── Life: Finance Awareness ──────────────────────────────────────────────────
+from life.finance import (
+    log_transaction, get_transactions, delete_transaction,
+    get_monthly_summary, set_budget, get_budgets,
+    create_savings_goal, add_to_savings, list_savings_goals
+)
+
+@app.post("/life/finance/log")
+async def route_log_transaction(request: Request):
+    body = await request.json()
+    amount = body.get("amount")
+    if amount is None:
+        raise HTTPException(status_code=400, detail="amount is required")
+    return log_transaction(
+        amount=float(amount),
+        category=body.get("category", "other"),
+        description=body.get("description", ""),
+        txn_type=body.get("type", "expense"),
+        txn_date=body.get("date", "")
+    )
+
+@app.get("/life/finance/transactions")
+async def route_get_transactions(days: int = 30, category: str = ""):
+    return {"transactions": get_transactions(days, category)}
+
+@app.delete("/life/finance/delete")
+async def route_delete_transaction(request: Request):
+    body = await request.json()
+    txn_id = body.get("id")
+    if not txn_id:
+        raise HTTPException(status_code=400, detail="id is required")
+    return delete_transaction(txn_id)
+
+@app.get("/life/finance/summary")
+async def route_monthly_summary(year: int = 0, month: int = 0):
+    return get_monthly_summary(year, month)
+
+@app.post("/life/finance/budget")
+async def route_set_budget(request: Request):
+    body = await request.json()
+    category = body.get("category", "").strip()
+    limit = body.get("monthly_limit")
+    if not category or limit is None:
+        raise HTTPException(status_code=400, detail="category and monthly_limit are required")
+    return set_budget(category, float(limit))
+
+@app.get("/life/finance/budgets")
+async def route_get_budgets():
+    return {"budgets": get_budgets()}
+
+@app.post("/life/finance/savings/create")
+async def route_create_savings_goal(request: Request):
+    body = await request.json()
+    name = body.get("name", "").strip()
+    target = body.get("target_amount")
+    if not name or target is None:
+        raise HTTPException(status_code=400, detail="name and target_amount are required")
+    return create_savings_goal(name, float(target), body.get("target_date", ""))
+
+@app.post("/life/finance/savings/add")
+async def route_add_to_savings(request: Request):
+    body = await request.json()
+    goal_id = body.get("id")
+    amount = body.get("amount")
+    if goal_id is None or amount is None:
+        raise HTTPException(status_code=400, detail="id and amount are required")
+    return add_to_savings(goal_id, float(amount))
+
+@app.get("/life/finance/savings")
+async def route_list_savings():
+    return {"goals": list_savings_goals()}
+
+# ── Life: Meal Planning ──────────────────────────────────────────────────────
+from life.meals import (
+    log_meal, get_meals_today, get_meal_history, delete_meal,
+    set_preference, get_preferences, suggest_meals, plan_weekly_meals
+)
+
+@app.post("/life/meals/log")
+async def route_log_meal(request: Request):
+    body = await request.json()
+    name = body.get("name", "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="name is required")
+    return log_meal(
+        name=name,
+        meal_type=body.get("type", "lunch"),
+        calories=body.get("calories"),
+        notes=body.get("notes", ""),
+        meal_date=body.get("date", "")
+    )
+
+@app.get("/life/meals/today")
+async def route_meals_today(date: str = ""):
+    return get_meals_today(date)
+
+@app.get("/life/meals/history")
+async def route_meal_history(days: int = 7):
+    return {"history": get_meal_history(days)}
+
+@app.delete("/life/meals/delete")
+async def route_delete_meal(request: Request):
+    body = await request.json()
+    meal_id = body.get("id")
+    if not meal_id:
+        raise HTTPException(status_code=400, detail="id is required")
+    return delete_meal(meal_id)
+
+@app.post("/life/meals/preferences")
+async def route_set_preference(request: Request):
+    body = await request.json()
+    key = body.get("key", "").strip()
+    value = body.get("value", "").strip()
+    if not key or not value:
+        raise HTTPException(status_code=400, detail="key and value are required")
+    return set_preference(key, value)
+
+@app.get("/life/meals/preferences")
+async def route_get_preferences():
+    return {"preferences": get_preferences()}
+
+@app.post("/life/meals/suggest")
+async def route_suggest_meals(request: Request):
+    body = await request.json()
+    return await suggest_meals(body.get("meal_type", ""), body.get("preferences", ""))
+
+@app.post("/life/meals/plan")
+async def route_plan_weekly():
+    return await plan_weekly_meals()
+
+    
 # ─── AUDIT LOG ROUTES ─────────────────────────────────────────────────────────
+
+
+# ── Intelligence: Personal Tutor ─────────────────────────────────────────────
+from intelligence.tutor import (
+    start_lesson, generate_flashcards, list_flashcards,
+    generate_quiz, submit_quiz_answers, get_tutor_progress
+)
+
+@app.post("/intelligence/tutor/learn")
+async def route_tutor_learn(request: Request):
+    body = await request.json()
+    topic = body.get("topic", "").strip()
+    difficulty = body.get("difficulty", "beginner").strip()
+    if not topic:
+        raise HTTPException(status_code=400, detail="topic is required")
+    return await start_lesson(topic, difficulty)
+
+@app.post("/intelligence/tutor/flashcards")
+async def route_tutor_flashcards(request: Request):
+    body = await request.json()
+    topic = body.get("topic", "").strip()
+    count = body.get("count", 5)
+    if not topic:
+        raise HTTPException(status_code=400, detail="topic is required")
+    return await generate_flashcards(topic, count)
+
+@app.get("/intelligence/tutor/flashcards")
+async def route_list_flashcards(topic: str = ""):
+    return {"flashcards": list_flashcards(topic)}
+
+@app.post("/intelligence/tutor/quiz")
+async def route_tutor_quiz(request: Request):
+    body = await request.json()
+    topic = body.get("topic", "").strip()
+    difficulty = body.get("difficulty", "medium").strip()
+    count = body.get("count", 3)
+    if not topic:
+        raise HTTPException(status_code=400, detail="topic is required")
+    return await generate_quiz(topic, difficulty, count)
+
+@app.post("/intelligence/tutor/quiz/submit")
+async def route_tutor_quiz_submit(request: Request):
+    body = await request.json()
+    quiz_id = body.get("quiz_id")
+    answers = body.get("answers")
+    if quiz_id is None or answers is None:
+        raise HTTPException(status_code=400, detail="quiz_id and answers are required")
+    return submit_quiz_answers(quiz_id, answers)
+
+@app.get("/intelligence/tutor/progress")
+async def route_tutor_progress():
+    return {"progress": get_tutor_progress()}
+
+# ── Creative: Image Generation ───────────────────────────────────────────────
+from creative.images import generate_image
+
+@app.post("/creative/images")
+async def route_generate_image(request: Request):
+    body = await request.json()
+    prompt = body.get("prompt", "").strip()
+    if not prompt:
+        raise HTTPException(status_code=400, detail="prompt is required")
+    return await generate_image(prompt)
+
+
+# ── Creative: Content Writing ───────────────────────────────────────────────
+from creative.writing import generate_content
+
+@app.post("/creative/writing")
+async def route_generate_writing(request: Request):
+    body = await request.json()
+    topic = body.get("topic", "").strip()
+    format_type = body.get("format", "blog").strip()
+    export_type = body.get("export_type", "md").strip()
+    export_name = body.get("export_name", "").strip()
+    if not topic:
+        raise HTTPException(status_code=400, detail="topic is required")
+    return await generate_content(topic, format_type, export_type, export_name)
+
 
 @app.get("/control/audit")
 async def audit_log(limit: int = 50):

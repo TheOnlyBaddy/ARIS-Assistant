@@ -420,6 +420,215 @@ INTENT_TOOLS = [
             parameters=types.Schema(type=types.Type.OBJECT, properties={})
         ),
 
+        # ── Phase 5: Knowledge Base ────────────────────────────────────────────
+        types.FunctionDeclaration(
+            name="knowledge_store",
+            description="User wants ARIS to remember a fact, note, or information permanently in the knowledge base",
+            parameters=types.Schema(
+                type=types.Type.OBJECT,
+                properties={
+                    "content": types.Schema(type=types.Type.STRING, description="Fact/note content to store"),
+                    "title": types.Schema(type=types.Type.STRING, description="Optional title for the note"),
+                },
+                required=["content"]
+            )
+        ),
+        types.FunctionDeclaration(
+            name="knowledge_search",
+            description="User asks a question or wants to search their personal knowledge base/notes/documents",
+            parameters=types.Schema(
+                type=types.Type.OBJECT,
+                properties={
+                    "query": types.Schema(type=types.Type.STRING, description="Search query"),
+                },
+                required=["query"]
+            )
+        ),
+
+        # ── Phase 5: Code Assistant ────────────────────────────────────────────
+        types.FunctionDeclaration(
+            name="code_generate",
+            description="User wants code written, generated, or completed in any programming language",
+            parameters=types.Schema(
+                type=types.Type.OBJECT,
+                properties={
+                    "description": types.Schema(type=types.Type.STRING, description="What the code should do"),
+                    "language": types.Schema(type=types.Type.STRING, description="Programming language e.g. python, javascript, rust"),
+                },
+                required=["description"]
+            )
+        ),
+        types.FunctionDeclaration(
+            name="code_debug",
+            description="User wants code debugged, corrected, or fixed",
+            parameters=types.Schema(
+                type=types.Type.OBJECT,
+                properties={
+                    "code": types.Schema(type=types.Type.STRING, description="Code content to debug"),
+                    "error": types.Schema(type=types.Type.STRING, description="Optional error message or description of failure"),
+                },
+                required=["code"]
+            )
+        ),
+        types.FunctionDeclaration(
+            name="code_execute",
+            description="User wants to run or execute Python code locally",
+            parameters=types.Schema(
+                type=types.Type.OBJECT,
+                properties={
+                    "code": types.Schema(type=types.Type.STRING, description="Python code to run"),
+                },
+                required=["code"]
+            )
+        ),
+
+        # ── Phase 5: Habits & Goals ────────────────────────────────────────────
+        types.FunctionDeclaration(
+            name="habit_create",
+            description="User wants to define a new daily habit or goal to track",
+            parameters=types.Schema(
+                type=types.Type.OBJECT,
+                properties={
+                    "name": types.Schema(type=types.Type.STRING, description="Habit/goal name"),
+                    "description": types.Schema(type=types.Type.STRING, description="Optional description"),
+                    "target": types.Schema(type=types.Type.STRING, description="Optional target metric e.g. 3L, 30 mins"),
+                },
+                required=["name"]
+            )
+        ),
+        types.FunctionDeclaration(
+            name="habit_log",
+            description="User wants to log, complete, or check off a daily habit",
+            parameters=types.Schema(
+                type=types.Type.OBJECT,
+                properties={
+                    "habit_id": types.Schema(type=types.Type.INTEGER, description="Optional ID of the habit"),
+                    "name": types.Schema(type=types.Type.STRING, description="Name of the habit e.g. exercise, water"),
+                    "notes": types.Schema(type=types.Type.STRING, description="Optional completion notes"),
+                }
+            )
+        ),
+        types.FunctionDeclaration(
+            name="habit_streaks",
+            description="User wants to see their current habit streaks and completion status",
+            parameters=types.Schema(type=types.Type.OBJECT, properties={})
+        ),
+
+        # ── Phase 5: Health & Wellbeing ────────────────────────────────────────
+        types.FunctionDeclaration(
+            name="health_log",
+            description="User wants to log health metrics: sleep, mood, energy, water, or exercise",
+            parameters=types.Schema(
+                type=types.Type.OBJECT,
+                properties={
+                    "sleep_hours": types.Schema(type=types.Type.NUMBER, description="Hours of sleep"),
+                    "mood": types.Schema(type=types.Type.STRING, description="User mood e.g. good, tired, great"),
+                    "energy": types.Schema(type=types.Type.INTEGER, description="Energy level 1-10"),
+                    "water_litres": types.Schema(type=types.Type.NUMBER, description="Water consumed in litres"),
+                    "exercise_mins": types.Schema(type=types.Type.INTEGER, description="Exercise duration in minutes"),
+                    "exercise_type": types.Schema(type=types.Type.STRING, description="Type of exercise e.g. running, gym"),
+                    "notes": types.Schema(type=types.Type.STRING, description="Optional health notes"),
+                }
+            )
+        ),
+        types.FunctionDeclaration(
+            name="health_trends",
+            description="User wants to see a health summary, averages, or AI trend analysis",
+            parameters=types.Schema(
+                type=types.Type.OBJECT,
+                properties={
+                    "days": types.Schema(type=types.Type.INTEGER, description="Number of days to analyze, default 7"),
+                }
+            )
+        ),
+
+        # ── Phase 5: Finance Awareness ─────────────────────────────────────────
+        types.FunctionDeclaration(
+            name="finance_log",
+            description="User wants to log an expense or income transaction in INR (₹)",
+            parameters=types.Schema(
+                type=types.Type.OBJECT,
+                properties={
+                    "amount": types.Schema(type=types.Type.NUMBER, description="Transaction amount in INR"),
+                    "category": types.Schema(type=types.Type.STRING, description="Category: food, transport, entertainment, shopping, bills, etc."),
+                    "description": types.Schema(type=types.Type.STRING, description="What the transaction was for"),
+                    "type": types.Schema(type=types.Type.STRING, description="Type: expense or income"),
+                },
+                required=["amount"]
+            )
+        ),
+        types.FunctionDeclaration(
+            name="finance_summary",
+            description="User wants to see budget status, monthly summary, or savings goals progress",
+            parameters=types.Schema(type=types.Type.OBJECT, properties={})
+        ),
+
+        # ── Phase 5: Meal Planning ─────────────────────────────────────────────
+        types.FunctionDeclaration(
+            name="meal_plan",
+            description="User wants to plan their meals, get meal suggestions, or log a meal they ate",
+            parameters=types.Schema(
+                type=types.Type.OBJECT,
+                properties={
+                    "action": types.Schema(type=types.Type.STRING, description="Action: plan (generate 7-day plan), suggest (suggest dinners/breakfasts), log (log a meal eaten)"),
+                    "meal_type": types.Schema(type=types.Type.STRING, description="Meal type for suggestions e.g. breakfast, dinner"),
+                    "meal_name": types.Schema(type=types.Type.STRING, description="Meal name for logging"),
+                    "calories": types.Schema(type=types.Type.INTEGER, description="Calorie estimate for logging"),
+                }
+            )
+        ),
+
+        # ── Phase 5: Personal Tutor ────────────────────────────────────────────
+        types.FunctionDeclaration(
+            name="tutor_learn",
+            description="User wants to learn about a topic, start a lesson, or study a subject",
+            parameters=types.Schema(
+                type=types.Type.OBJECT,
+                properties={
+                    "topic": types.Schema(type=types.Type.STRING, description="Subject or concept to learn about"),
+                    "difficulty": types.Schema(type=types.Type.STRING, description="Target level: beginner, medium, hard"),
+                },
+                required=["topic"]
+            )
+        ),
+        types.FunctionDeclaration(
+            name="tutor_quiz",
+            description="User wants to take a multiple-choice quiz to test their knowledge on a topic",
+            parameters=types.Schema(
+                type=types.Type.OBJECT,
+                properties={
+                    "topic": types.Schema(type=types.Type.STRING, description="Quiz topic"),
+                    "difficulty": types.Schema(type=types.Type.STRING, description="Difficulty level"),
+                },
+                required=["topic"]
+            )
+        ),
+
+        # ── Phase 5: Creative Writing & Images ────────────────────────────────
+        types.FunctionDeclaration(
+            name="creative_writing",
+            description="User wants a blog post, essay, email, or LinkedIn post written in their voice/style",
+            parameters=types.Schema(
+                type=types.Type.OBJECT,
+                properties={
+                    "topic": types.Schema(type=types.Type.STRING, description="Topic or prompt to write about"),
+                    "format": types.Schema(type=types.Type.STRING, description="Format: blog, essay, email, linkedin_post"),
+                },
+                required=["topic"]
+            )
+        ),
+        types.FunctionDeclaration(
+            name="generate_image",
+            description="User wants an image generated from a text description using Gemini Imagen",
+            parameters=types.Schema(
+                type=types.Type.OBJECT,
+                properties={
+                    "prompt": types.Schema(type=types.Type.STRING, description="Image description"),
+                },
+                required=["prompt"]
+            )
+        ),
+
         # ── General ────────────────────────────────────────────────────────────
         types.FunctionDeclaration(
             name="general_chat",
@@ -555,11 +764,54 @@ def _local_heuristics(message: str) -> Optional[dict]:
         url = msg.replace("open website ", "").replace("go to ", "").replace("visit ", "").strip()
         return {"intent": "browser_open", "params": {"url": url}}
 
-    # ── Relationships ──
-    if msg in ("birthday", "birthdays", "upcoming birthdays"):
-        return {"intent": "get_upcoming_birthdays", "params": {}}
-    if msg in ("neglected", "neglected contacts", "reach out"):
-        return {"intent": "get_neglected_contacts", "params": {}}
+    # ── Phase 5 Heuristics ──
+    if msg.startswith("remember this:") or msg.startswith("remember that:"):
+        fact = message[14:].strip()
+        return {"intent": "knowledge_store", "params": {"content": fact}}
+
+    if msg.startswith("write code to ") or msg.startswith("generate code to ") or msg.startswith("write a function to "):
+        desc = message.replace("write code to ", "").replace("generate code to ", "").replace("write a function to ", "").strip()
+        return {"intent": "code_generate", "params": {"description": desc}}
+
+    if msg.startswith("log my habit: ") or msg.startswith("log habit: "):
+        name = message.replace("log my habit: ", "").replace("log habit: ", "").strip()
+        return {"intent": "habit_log", "params": {"name": name}}
+
+    if msg.startswith("i spent ₹") or msg.startswith("spent ₹") or msg.startswith("spent rs "):
+        # e.g., i spent ₹200 on coffee
+        # Let's extract amount and description using regex
+        match = re.search(r'(?:spent\s+[₹rs\.?\s]*)(\d+)(?:\s+on\s+)?(.*)?', msg)
+        if match:
+            amt = float(match.group(1))
+            desc = match.group(2) or ""
+            # Simple category detection
+            cat = "other"
+            for c in ["food", "transport", "entertainment", "shopping", "bills", "rent", "salary"]:
+                if c in desc:
+                    cat = c
+                    break
+            return {"intent": "finance_log", "params": {"amount": amt, "category": cat, "description": desc}}
+
+    if "slept " in msg and " last night" in msg:
+        match = re.search(r'slept\s+(\d+(?:\.\d+)?)\s*hour', msg)
+        if match:
+            hours = float(match.group(1))
+            return {"intent": "health_log", "params": {"sleep_hours": hours}}
+
+    if msg == "plan my meals" or msg == "plan meals" or msg == "meal plan":
+        return {"intent": "meal_plan", "params": {"action": "plan"}}
+
+    if msg.startswith("teach me "):
+        topic = message[9:].strip()
+        return {"intent": "tutor_learn", "params": {"topic": topic}}
+
+    if msg.startswith("generate an image of ") or msg.startswith("generate image of "):
+        prompt = message.replace("generate an image of ", "").replace("generate image of ", "").strip()
+        return {"intent": "generate_image", "params": {"prompt": prompt}}
+
+    if msg.startswith("write a blog post about ") or msg.startswith("write a post about "):
+        topic = message.replace("write a blog post about ", "").replace("write a post about ", "").strip()
+        return {"intent": "creative_writing", "params": {"topic": topic, "format": "blog"}}
 
     return None
 
@@ -609,6 +861,23 @@ Available intents:
 - "get_person": Query relationship memory details. params: {{"name": "person name"}}
 - "get_neglected_contacts": Identify people to reach out to. params: {{}}
 - "get_upcoming_birthdays": Check birthdays. params: {{}}
+- "knowledge_store": Store fact/note permanently. params: {{"content": "fact", "title": "optional title"}}
+- "knowledge_search": Search notes/docs. params: {{"query": "search query"}}
+- "code_generate": Write/generate code. params: {{"description": "what code does", "language": "python|js"}}
+- "code_debug": Debug code. params: {{"code": "code", "error": "optional error"}}
+- "code_execute": Run Python locally. params: {{"code": "python code"}}
+- "habit_create": Track a new habit. params: {{"name": "name", "description": "text", "target": "3L"}}
+- "habit_log": Log habit done. params: {{"name": "name", "notes": "text"}}
+- "habit_streaks": Show habits checklist & streaks. params: {{}}
+- "health_log": Log sleep, mood, energy, water, exercise. params: {{"sleep_hours": 7.5, "mood": "good", "water_litres": 2.5, "exercise_mins": 30, "exercise_type": "running", "notes": "text"}}
+- "health_trends": View health summary & analysis. params: {{"days": 7}}
+- "finance_log": Log transaction in INR (₹). params: {{"amount": 150, "category": "food", "description": "lunch", "type": "expense|income"}}
+- "finance_summary": Show budgets, monthly spending, savings goals. params: {{}}
+- "meal_plan": Generate meal plan or suggestions. params: {{"action": "plan|suggest|log", "meal_type": "dinner", "meal_name": "text", "calories": 400}}
+- "tutor_learn": Start a structured learning lesson. params: {{"topic": "subject", "difficulty": "beginner|medium"}}
+- "tutor_quiz": Take a multiple-choice quiz. params: {{"topic": "subject", "difficulty": "easy|medium"}}
+- "creative_writing": Write content in user style. params: {{"topic": "prompt", "format": "blog|linkedin_post|email"}}
+- "generate_image": Generate an image. params: {{"prompt": "image description"}}
 - "general_chat": Conversational greetings, creative tasks, passages, jokes, or any message that doesn't fit a specific tool. params: {{}}
 
 User message: "{message}"
@@ -843,11 +1112,12 @@ async def execute_intent(intent: str, params: dict) -> dict:
             return {"type": "browser", "data": open_url(params.get("url", ""))}
 
         elif intent == "browser_search":
-            from control.pc.software import search_google
-            return {"type": "browser", "data": search_google(
+            from intelligence.search import web_search
+            res = await web_search(
                 query=params.get("query", ""),
-                max_results=int(params.get("max_results", 5))
-            )}
+                num_results=int(params.get("max_results", 5))
+            )
+            return {"type": "browser", "data": res}
 
         # ── Notifications ──────────────────────────────────────────────────────
         elif intent == "send_notification":
@@ -912,6 +1182,123 @@ async def execute_intent(intent: str, params: dict) -> dict:
         elif intent == "network_diagnostics":
             from control.pc.hardware import get_network_diagnostics
             return {"type": "network_diagnostics", "data": get_network_diagnostics()}
+
+        # ── Phase 5: Knowledge Base ────────────────────────────────────────────
+        elif intent == "knowledge_store":
+            from intelligence.knowledge import add_document
+            res = await add_document(doc_type="text", content=params.get("content", ""), title=params.get("title", "Remembered Note"))
+            return {"type": "knowledge", "data": res}
+
+        elif intent == "knowledge_search":
+            from intelligence.knowledge import search_knowledge
+            res = await search_knowledge(query=params.get("query", ""))
+            return {"type": "knowledge", "data": res}
+
+        # ── Phase 5: Code Assistant ────────────────────────────────────────────
+        elif intent == "code_generate":
+            from intelligence.code import generate_code
+            res = await generate_code(description=params.get("description", ""), language=params.get("language", "python"))
+            return {"type": "code", "data": res}
+
+        elif intent == "code_debug":
+            from intelligence.code import debug_code
+            res = await debug_code(code=params.get("code", ""), error=params.get("error", ""), language=params.get("language", "python"))
+            return {"type": "code", "data": res}
+
+        elif intent == "code_execute":
+            from intelligence.code import execute_python
+            res = execute_python(code=params.get("code", ""))
+            return {"type": "code", "data": res}
+
+        # ── Phase 5: Habits & Goals ────────────────────────────────────────────
+        elif intent == "habit_create":
+            from life.habits import create_habit
+            res = create_habit(name=params.get("name", ""), description=params.get("description", ""), target=params.get("target", ""))
+            return {"type": "habits", "data": res}
+
+        elif intent == "habit_log":
+            from life.habits import log_habit
+            res = log_habit(habit_id=params.get("habit_id", 1), notes=params.get("notes", ""))
+            return {"type": "habits", "data": res}
+
+        elif intent == "habit_streaks":
+            from life.habits import get_all_streaks
+            res = get_all_streaks()
+            return {"type": "habits", "data": res}
+
+        # ── Phase 5: Health & Wellbeing ────────────────────────────────────────
+        elif intent == "health_log":
+            from life.health import log_health
+            res = log_health(
+                sleep_hours=params.get("sleep_hours"),
+                mood=params.get("mood"),
+                energy=params.get("energy"),
+                water_litres=params.get("water_litres"),
+                exercise_mins=params.get("exercise_mins"),
+                exercise_type=params.get("exercise_type", ""),
+                notes=params.get("notes", "")
+            )
+            return {"type": "health", "data": res}
+
+        elif intent == "health_trends":
+            from life.health import get_health_summary, analyze_trends
+            summary = await get_health_summary()
+            trends = await analyze_trends(days=params.get("days", 7))
+            return {"type": "health", "data": {"summary": summary, "trends": trends}}
+
+        # ── Phase 5: Finance Awareness ─────────────────────────────────────────
+        elif intent == "finance_log":
+            from life.finance import log_transaction
+            res = log_transaction(
+                amount=params.get("amount"),
+                category=params.get("category", "other"),
+                description=params.get("description", ""),
+                txn_type=params.get("type", "expense")
+            )
+            return {"type": "finance", "data": res}
+
+        elif intent == "finance_summary":
+            from life.finance import get_monthly_summary, get_budgets, list_savings_goals
+            summary = get_monthly_summary()
+            budgets = get_budgets()
+            savings = list_savings_goals()
+            return {"type": "finance", "data": {"monthly_summary": summary, "budgets": budgets, "savings": savings}}
+
+        # ── Phase 5: Meal Planning ─────────────────────────────────────────────
+        elif intent == "meal_plan":
+            action = params.get("action", "plan").lower().strip()
+            if action == "plan":
+                from life.meals import plan_weekly_meals
+                res = await plan_weekly_meals()
+            elif action == "suggest":
+                from life.meals import suggest_meals
+                res = await suggest_meals(meal_type=params.get("meal_type", ""))
+            else:
+                from life.meals import log_meal
+                res = log_meal(name=params.get("meal_name", ""), meal_type=params.get("meal_type", "lunch"), calories=params.get("calories"))
+            return {"type": "meals", "data": res}
+
+        # ── Phase 5: Personal Tutor ────────────────────────────────────────────
+        elif intent == "tutor_learn":
+            from intelligence.tutor import start_lesson
+            res = await start_lesson(topic=params.get("topic", ""), difficulty=params.get("difficulty", "beginner"))
+            return {"type": "tutor", "data": res}
+
+        elif intent == "tutor_quiz":
+            from intelligence.tutor import generate_quiz
+            res = await generate_quiz(topic=params.get("topic", ""), difficulty=params.get("difficulty", "medium"))
+            return {"type": "tutor", "data": res}
+
+        # ── Phase 5: Creative Writing & Images ────────────────────────────────
+        elif intent == "creative_writing":
+            from creative.writing import generate_content
+            res = await generate_content(topic=params.get("topic", ""), format_type=params.get("format", "blog"))
+            return {"type": "writing", "data": res}
+
+        elif intent == "generate_image":
+            from creative.images import generate_image
+            res = await generate_image(prompt=params.get("prompt", ""))
+            return {"type": "image", "data": res}
 
         # ── Fallback ───────────────────────────────────────────────────────────
         else:
