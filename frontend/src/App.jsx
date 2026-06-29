@@ -8,6 +8,7 @@ import LifeDashboard from "./components/LifeDashboard"
 import CreativeDashboard from "./components/CreativeDashboard"
 import AgentsDashboard from "./components/AgentsDashboard"
 import SchedulerUI from "./components/SchedulerUI"
+import FinetuneDashboard from "./components/FinetuneDashboard"
 
 const API_BASE = window.location.hostname
   ? `http://${window.location.hostname}:8000`
@@ -1061,6 +1062,12 @@ export default function App() {
             ⏰ Scheduler
           </button>
           <button
+            className={`tab-btn ${activeTab === "finetune" ? "active" : ""}`}
+            onClick={() => setActiveTab("finetune")}
+          >
+            🎯 Fine-Tuning
+          </button>
+          <button
             className={`tab-btn ${activeTab === "system" ? "active" : ""}`}
             onClick={() => setActiveTab("system")}
           >
@@ -1080,6 +1087,7 @@ export default function App() {
         <CreativeDashboard visible={activeTab === "creative"} apiBase={API_BASE} />
         <AgentsDashboard visible={activeTab === "agents"} />
         <SchedulerUI visible={activeTab === "scheduler"} />
+        <FinetuneDashboard visible={activeTab === "finetune"} apiBase={API_BASE} />
         <SystemDashboard visible={activeTab === "system"} />
         <SettingsPanel visible={activeTab === "settings"} apiBase={API_BASE} />
 

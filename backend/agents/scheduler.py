@@ -108,6 +108,29 @@ def load_jobs_from_db():
         replace_existing=True
     )
 
+    # Weekly retraining scheduler job (Runs every Sunday at midnight)
+    try:
+        from finetune.retrain import run_retrain_pipeline
+        def weekly_retrain_job():
+            print("[ARIS Scheduler] Triggering weekly background model retraining check...")
+            try:
+                run_retrain_pipeline(force=False, dry_run=False)
+            except Exception as e:
+                print(f"[ARIS Scheduler] Weekly retrain job failed: {e}")
+
+        scheduler.add_job(
+            weekly_retrain_job,
+            trigger="cron",
+            day_of_week="sun",
+            hour=0,
+            minute=0,
+            id="weekly_model_retrainer",
+            replace_existing=True
+        )
+        print("[ARIS Scheduler] Scheduled weekly background model retraining check (Sunday 00:00).")
+    except Exception as e:
+        print(f"[ARIS Scheduler] Failed to schedule weekly model retrainer: {e}")
+
     for row in jobs:
         job_id = str(row["id"])
         trigger_type = row["trigger_type"]

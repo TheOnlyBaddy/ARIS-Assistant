@@ -142,6 +142,35 @@ OLLAMA_CHAT_MODEL   = os.getenv("OLLAMA_CHAT_MODEL",   "llama3.2")
 OLLAMA_WRITE_MODEL  = os.getenv("OLLAMA_WRITE_MODEL",  "mistral")
 OLLAMA_REASON_MODEL = os.getenv("OLLAMA_REASON_MODEL", "gemma3:4b")
 
+async def get_best_ollama_model(target_model: str) -> str:
+    """
+    Checks if a fine-tuned version of the model exists in Ollama.
+    If yes, returns the fine-tuned version. If not, falls back to the base model.
+    """
+    mapping = {
+        OLLAMA_CHAT_MODEL: "aris-llama",
+        OLLAMA_WRITE_MODEL: "aris-mistral",
+        OLLAMA_REASON_MODEL: "aris-gemma"
+    }
+    
+    fine_tuned = mapping.get(target_model)
+    if not fine_tuned:
+        return target_model
+        
+    try:
+        async with httpx.AsyncClient(timeout=2.0) as client:
+            r = await client.get(f"{OLLAMA_BASE_URL}/api/tags")
+            if r.status_code == 200:
+                # Extract simple names like "aris-llama" and full names like "aris-llama:latest"
+                available_simple = [m["name"].split(":")[0] for m in r.json().get("models", [])]
+                available_full = [m["name"] for m in r.json().get("models", [])]
+                if fine_tuned in available_simple or f"{fine_tuned}:latest" in available_full:
+                    return fine_tuned
+    except Exception as e:
+        print(f"[ARIS Routing] Ollama tag check failed: {e}. Defaulting to base model.")
+        
+    return target_model
+
 gemini_client = genai.Client(api_key=GEMINI_API_KEY)
 
 ARIS_BASE_PROMPT = (
@@ -916,27 +945,29 @@ async def chat(request: Request, chat_payload: ChatRequest):
                     gemini_cooldown_until = time.time() + 300.0
 
                 print(f"[ARIS] Gemini failed: {gemini_error}. Falling back to Ollama...")
+                active_model = await get_best_ollama_model(ollama_model)
                 reply      = await ask_ollama_with_context(
                     message=request.message,
                     history=history,
                     system_prompt=system_prompt,
                     integration_data=integration_data,
-                    model=ollama_model
+                    model=active_model
                 )
-                model_used = f"ollama/{ollama_model}"
+                model_used = f"ollama/{active_model}"
 
         else:
             # Everything else → Ollama (local, free, private)
             try:
+                active_model = await get_best_ollama_model(ollama_model)
                 reply      = await ask_ollama_with_context(
                     message=request.message,
                     history=history,
                     system_prompt=system_prompt,
                     integration_data=integration_data,
-                    model=ollama_model
+                    model=active_model
                 )
-                model_used = f"ollama/{ollama_model}"
-                print(f"[ARIS] Ollama({ollama_model}) | Session: '{session_id}' | Intent: {intent}")
+                model_used = f"ollama/{active_model}"
+                print(f"[ARIS] Ollama({active_model}) | Session: '{session_id}' | Intent: {intent}")
 
             except Exception as ollama_error:
                 print(f"[ARIS] Ollama failed: {ollama_error}. Falling back to Gemini...")
@@ -2726,6 +2757,74 @@ async def ollama_status():
             "write_model" : OLLAMA_WRITE_MODEL,
             "reason_model": OLLAMA_REASON_MODEL,
         }
+    }
+
+# ─── FINE-TUNING ENDPOINTS ─────────────────────────────────────────────────────
+
+@app.get("/finetune/status")
+async def get_finetune_status():
+    from finetune.retrain import load_metadata, get_new_examples_count
+    meta = load_metadata()
+    new_count = get_new_examples_count(meta["last_trained_timestamp"])
+    return {
+        "status": "ok",
+        "last_trained": meta["last_trained_timestamp"],
+        "examples_at_last_train": meta["examples_at_last_train"],
+        "new_examples_collected": new_count,
+        "model_versions": meta["model_versions"],
+        "rollback_versions": meta["rollback_versions"]
+    }
+
+# Background worker for running training asynchronously so it doesn't block the HTTP call
+def run_retrain_bg(force: bool, dry_run: bool):
+    try:
+        from finetune.retrain import run_retrain_pipeline
+        run_retrain_pipeline(force=force, dry_run=dry_run)
+    except Exception as e:
+        print(f"[ARIS Finetune Worker] Asynchronous retraining failed: {e}")
+
+@app.post("/finetune/retrain")
+async def trigger_retrain(background_tasks: BackgroundTasks, force: bool = False, dry_run: bool = False):
+    background_tasks.add_task(run_retrain_bg, force, dry_run)
+    return {"status": "started", "message": "Retraining job queued in background."}
+
+@app.post("/finetune/rollback")
+async def rollback_model(model_type: str):
+    # model_type: llama3.2, mistral, gemma3
+    if model_type not in ["llama3.2", "mistral", "gemma3"]:
+        raise HTTPException(status_code=400, detail="Invalid model type. Must be llama3.2, mistral, or gemma3.")
+        
+    from finetune.retrain import load_metadata, save_metadata
+    meta = load_metadata()
+    rollbacks = meta["rollback_versions"][model_type]
+    if not rollbacks:
+        raise HTTPException(status_code=400, detail=f"No rollback versions available for {model_type}.")
+        
+    # Revert to the last version in rollbacks
+    previous_version = rollbacks.pop()
+    current_version = meta["model_versions"][model_type]
+    
+    # Rollback Ollama tag copy
+    ollama_base_tag = "aris-llama" if model_type == "llama3.2" else ("aris-mistral" if model_type == "mistral" else "aris-gemma")
+    prev_tag = previous_version.replace("-v", ":")
+    
+    # Copy previous version tag back to main tag
+    # e.g., ollama copy aris-llama:1 aris-llama
+    cmd = ["ollama", "copy", prev_tag, ollama_base_tag]
+    res = subprocess.run(cmd, capture_output=True, text=True)
+    if res.returncode != 0:
+        raise HTTPException(status_code=500, detail=f"Ollama rollback copy failed: {res.stderr}")
+        
+    # Put current version back to rollback list (swap them)
+    rollbacks.insert(0, current_version)
+    meta["rollback_versions"][model_type] = rollbacks
+    meta["model_versions"][model_type] = previous_version
+    save_metadata(meta)
+    
+    return {
+        "status": "success",
+        "message": f"Successfully rolled back {model_type} to {previous_version}.",
+        "active_version": previous_version
     }
 
 # ─── ENTRY POINT ───────────────────────────────────────────────────────────────
