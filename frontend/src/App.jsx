@@ -954,9 +954,9 @@ export default function App() {
               <div className="llm-pills">
                 {ollamaStatus.ollama.models.map(m => {
                   const name     = m.split(':')[0]
-                  const isChat   = name === ollamaStatus.gemini?.chat_model?.split(':')[0]
-                  const isWrite  = name === ollamaStatus.gemini?.write_model?.split(':')[0]
-                  const isReason = name === ollamaStatus.gemini?.reason_model?.split(':')[0]
+                  const isChat   = name === ollamaStatus.gemini?.chat_model?.split(':')[0] || name === "aris-llama"
+                  const isWrite  = name === ollamaStatus.gemini?.write_model?.split(':')[0] || name === "aris-mistral"
+                  const isReason = name === ollamaStatus.gemini?.reason_model?.split(':')[0] || name === "aris-gemma"
                   const role     = isChat ? 'chat' : isWrite ? 'write' : isReason ? 'reason' : null
 
                   return (
