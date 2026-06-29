@@ -551,7 +551,7 @@ async def ask_gemini_with_context(
             app_name = integration_data["data"].get("app", "")
 
         context_prompts = {
-            "emails":         f"Here are the emails retrieved:\n{data_str}\nSummarize them clearly and concisely for the user.",
+            "emails":         f"Here are the emails retrieved:\n{data_str}\nPresent the emails as a clean, structured bulleted list. Do NOT mix details of different emails. Format each email exactly as:\n* **[Sender]** — *[Subject]*: [One-sentence concise summary of the content].",
             "events":         f"Here are the calendar events retrieved from Google Calendar:\n{data_str}\nPresent them clearly. IMPORTANT: If the list is empty [], tell the user their calendar is clear — do NOT invent or hallucinate any events.",
             "event_created":  f"Event created successfully:\n{data_str}\nConfirm this to the user in a friendly way.",
             "tasks":          f"Here are the tasks:\n{data_str}\nPresent them clearly. If empty [], say there are no tasks.",
@@ -616,7 +616,7 @@ async def ask_ollama_with_context(
             app_name = integration_data["data"].get("app", "")
 
         context_prompts = {
-            "emails":         f"Here are the emails retrieved:\n{data_str}\nSummarize them clearly and concisely.",
+            "emails":         f"Here are the emails retrieved:\n{data_str}\nPresent the emails as a clean, structured bulleted list. Do NOT mix details of different emails. Format each email exactly as:\n* **[Sender]** — *[Subject]*: [One-sentence concise summary of the content].",
             "events":         f"Here are the calendar events:\n{data_str}\nPresent them clearly. If empty [], say the calendar is clear — do NOT invent events.",
             "event_created":  f"Event created successfully:\n{data_str}\nConfirm to the user.",
             "tasks":          f"Here are the tasks:\n{data_str}\nPresent them clearly. If empty [], say there are no tasks.",
