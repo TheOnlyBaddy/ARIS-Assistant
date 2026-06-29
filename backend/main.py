@@ -831,8 +831,8 @@ async def chat(request: Request, chat_payload: ChatRequest):
     # Complex tasks that need Gemini's reasoning power
     # Detected by checking if message looks like a knowledge/writing request
     def _needs_gemini(message: str, intent: str) -> bool:
-        if intent != "general_chat":
-            return False  # Integration intents handled locally
+        if intent not in ["general_chat", "knowledge_search", "browser_search"]:
+            return False  # System action and control integration intents handled locally
         msg = message.lower()
         triggers = [
             "what is", "what are", "explain", "how does", "how do",
