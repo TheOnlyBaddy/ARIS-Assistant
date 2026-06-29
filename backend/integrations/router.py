@@ -645,6 +645,19 @@ INTENT_TOOLS = [
 def _local_heuristics(message: str) -> Optional[dict]:
     msg = message.lower().strip()
 
+    # Intercept conceptual/informational questions to prevent them from misclassifying
+    # into local system tools (e.g., matching "TCP/UDP" to "network_diagnostics")
+    conceptual_triggers = [
+        "explain the difference", "difference between", "what is the difference",
+        "explain how", "how does", "what is tcp", "what is udp", "why is", "why does",
+        "tell me about", "explain ", "what are ", "can you explain", "what is ",
+        "write a", "write an", "generate", "create a story", "passage", "essay",
+        "paragraph", "summarize", "summary", "compare", "analyze", "analyse",
+        "help me understand", "elaborate", "pros and cons", "advantages", "disadvantages"
+    ]
+    if any(trigger in msg for trigger in conceptual_triggers):
+        return {"intent": "general_chat", "params": {}}
+
     # ── PC Control ──
     if msg in ("take screenshot", "screenshot", "capture screen", "capture screenshot"):
         return {"intent": "take_screenshot", "params": {}}
