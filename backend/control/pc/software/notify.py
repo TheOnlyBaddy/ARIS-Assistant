@@ -5,8 +5,27 @@ Uses plyer for native Windows toast notifications.
 """
 
 import os
+import threading
 from plyer import notification
 from datetime import datetime
+
+
+# ── Suppress plyer balloon_tip thread crashes ─────────────────────────────────
+# plyer spawns a background thread (balloon_tip) for Windows toast notifications.
+# On some systems, Shell_NotifyIconW fails and raises an unhandled exception in
+# that thread, spamming stderr with full tracebacks. These are non-fatal — the
+# notification dispatch already succeeded or gracefully failed — so we silence them.
+_original_excepthook = threading.excepthook
+
+def _suppress_plyer_thread_crash(args):
+    """Silently ignore exceptions from plyer's balloon_tip threads."""
+    if args.thread and args.thread.name and "balloon_tip" in args.thread.name:
+        # Silently ignore — this is a known plyer issue on Windows
+        return
+    # For all other threads, use the default handler
+    _original_excepthook(args)
+
+threading.excepthook = _suppress_plyer_thread_crash
 
 # ── Notification history (in-memory log) ──────────────────────────────────────
 _history: list[dict] = []

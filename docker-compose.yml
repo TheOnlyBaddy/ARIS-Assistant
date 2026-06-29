@@ -1,0 +1,36 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: aris_backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      # Persist SQLite database
+      - ./backend/aris.db:/app/aris.db
+      # Persist ChromaDB vector store
+      - ./backend/chroma_db:/app/chroma_db
+      # Persist self-created agent tools
+      - ./backend/agents/generated_tools:/app/agents/generated_tools
+      # Persist self-learning instructions
+      - ./backend/agents/learned_rules.txt:/app/agents/learned_rules.txt
+      # Persist user profile config
+      - ./backend/user_profile.json:/app/user_profile.json
+      # Mount output folder to host
+      - ./output:/app/output
+      # Mount env file for runtime config
+      - ./.env:/app/.env
+    environment:
+      - PYTHONUNBUFFERED=1
+      # Point to host's Ollama if running on host, or configure network bridge
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  # Named volumes could be used, but host mounts are preferred here 
+  # to keep data in sync with the Windsurf workspace directly.
+  aris_db_data:
+  aris_chroma_data:

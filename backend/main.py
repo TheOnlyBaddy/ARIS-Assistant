@@ -9,9 +9,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, StreamingResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
+import os
+# Robustly find .env from either backend or root
+_base_dir = os.path.dirname(os.path.abspath(__file__))
+_env_path = os.path.join(_base_dir, ".env")
+if not os.path.exists(_env_path):
+    _env_path = os.path.join(os.path.dirname(_base_dir), ".env")
+load_dotenv(_env_path)
+
 from typing import Any, Optional
 import uvicorn
-import os
 import time
 import sys
 import subprocess
@@ -124,8 +131,6 @@ from control.pc.hardware import (
     shutdown_pc, restart_pc, cancel_shutdown, get_network_diagnostics
 )
 
-load_dotenv()
-
 # ─── CONFIG ────────────────────────────────────────────────────────────────────
 
 GEMINI_API_KEY  = os.getenv("GEMINI_API_KEY")
@@ -204,10 +209,21 @@ async def lifespan(app: FastAPI):
           f"Memories: {stats['total_memories']} | "
           f"Trust level: {safety['trust_level']} | "
           f"Google: {google}")
+    
+    # Start background scheduler
+    from agents.scheduler import start_scheduler, stop_scheduler
+    start_scheduler()
+
     try:
         yield
     except (asyncio.CancelledError, KeyboardInterrupt):
         pass
+    finally:
+        print("[ARIS] Shutting down...")
+        try:
+            stop_scheduler()
+        except Exception:
+            pass
 
 # ─── FASTAPI APP ───────────────────────────────────────────────────────────────
 
@@ -218,6 +234,26 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+from fastapi import Security, Depends
+from fastapi.security.api_key import APIKeyHeader
+
+API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=False)
+
+def verify_api_key(api_key: str = Security(API_KEY_HEADER)):
+    expected_key = os.getenv("API_KEY", "your_secure_token")
+    if not api_key or api_key != expected_key:
+        raise HTTPException(status_code=401, detail="Unauthorized: Invalid X-API-Key")
+
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000", "http://localhost:5173"],
@@ -225,6 +261,56 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.middleware("http")
+async def log_request_latency(request: Request, call_next):
+    start_time = time.time()
+    try:
+        response = await call_next(request)
+        duration_ms = (time.time() - start_time) * 1000.0
+        session_id = request.headers.get("X-Session-ID", "system")
+        
+        from agents.monitoring import log_structured
+        log_structured(
+            level="INFO",
+            message=f"HTTP {request.method} {request.url.path} -> {response.status_code}",
+            session_id=session_id,
+            execution_time_ms=duration_ms
+        )
+        return response
+    except Exception as e:
+        duration_ms = (time.time() - start_time) * 1000.0
+        from agents.monitoring import log_structured
+        log_structured(
+            level="ERROR",
+            message=f"HTTP {request.method} {request.url.path} failed",
+            session_id=request.headers.get("X-Session-ID", "system"),
+            execution_time_ms=duration_ms,
+            error=str(e)
+        )
+        raise e
+
+@app.middleware("http")
+async def verify_admin_api_key(request: Request, call_next):
+    path = request.url.path
+    if any(path.startswith(prefix) for prefix in ["/agents", "/settings", "/admin", "/control"]):
+        if request.method == "OPTIONS":
+            return await call_next(request)
+
+        # Exempt read-only status-check endpoints the frontend polls
+        exempt_paths = ["/control/system/ollama"]
+        if path in exempt_paths and request.method == "GET":
+            return await call_next(request)
+            
+        api_key = request.headers.get("X-API-Key")
+        expected_key = os.getenv("API_KEY", "your_secure_token")
+        if not api_key or api_key != expected_key:
+            from fastapi.responses import JSONResponse
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "Unauthorized: Invalid or missing X-API-Key"}
+            )
+    return await call_next(request)
 
 app.include_router(auth_router)
 
@@ -344,6 +430,18 @@ def build_full_system_prompt(memories: list[str]) -> str:
     profile       = load_profile()
     profile_block = build_profile_prompt(profile)
     prompt        = f"{ARIS_BASE_PROMPT}\n\n{profile_block}"
+
+    # Inject learned rules from feedback
+    rules_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "agents", "learned_rules.txt")
+    if os.path.exists(rules_path):
+        try:
+            with open(rules_path, "r", encoding="utf-8") as f:
+                rules = f.read().strip()
+                if rules:
+                    prompt += f"\n\nLEARNED USER PREFERENCES & RULES:\n{rules}"
+        except Exception:
+            pass
+
     if memories:
         memory_block = "\n\nLONG-TERM MEMORY (facts you know about this user):\n"
         for i, mem in enumerate(memories, 1):
@@ -648,8 +746,12 @@ def _build_action_detail(data: dict, intent: str, params: dict) -> str:
 # ─── CHAT ROUTE ────────────────────────────────────────────────────────────────
 
 @app.post("/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest):
+@limiter.limit("5/minute")
+async def chat(request: Request, chat_payload: ChatRequest):
+    # Remap request to payload to preserve downstream compatibility
     global gemini_cooldown_until
+    request_obj = request
+    request = chat_payload
     if not request.message.strip():
         raise HTTPException(status_code=400, detail="Message cannot be empty")
 
@@ -684,6 +786,18 @@ async def chat(request: ChatRequest):
 
     relevant_memories = await search_memories(request.message, n_results=3)
     system_prompt     = build_full_system_prompt(relevant_memories)
+
+    # Auto-detect user corrections of previous model response
+    from agents.learning import detect_correction_heuristics, log_user_correction
+    if detect_correction_heuristics(request.message):
+        history = get_history(session_id)
+        last_model_msg = ""
+        for turn in reversed(history):
+            if turn.get("role") == "model":
+                last_model_msg = turn.get("text", "")
+                break
+        if last_model_msg:
+            log_user_correction(session_id, request.message, last_model_msg)
 
     add_to_memory(session_id, "user", request.message)
     history = get_history(session_id)
@@ -774,7 +888,13 @@ async def chat(request: ChatRequest):
     if is_gemini_cooldown:
         print("[ARIS] Gemini is in cooldown. Bypassing cloud call and routing to Ollama.")
 
-    use_gemini = _needs_gemini(request.message, intent) and not is_gemini_cooldown
+    # Intercept use_gemini for Offline/Privacy Mode
+    is_privacy_mode = os.getenv("PRIVACY_MODE", "false").lower() == "true"
+    if is_privacy_mode:
+        print("[ARIS Privacy] Privacy Mode enabled. Forcing local Ollama execution.")
+        use_gemini = False
+    else:
+        use_gemini = _needs_gemini(request.message, intent) and not is_gemini_cooldown
 
     try:
         if use_gemini:
@@ -2409,6 +2529,156 @@ async def route_generate_writing(request: Request):
     if not topic:
         raise HTTPException(status_code=400, detail="topic is required")
     return await generate_content(topic, format_type, export_type, export_name)
+
+
+# ── Agents: Task Loop ─────────────────────────────────────────────────────────
+from agents.task_loop import plan_task, execute_task_loop, get_task_status, list_tasks
+from fastapi import BackgroundTasks
+
+@app.post("/agents/task")
+async def route_create_task(request: Request, background_tasks: BackgroundTasks):
+    body = await request.json()
+    goal = body.get("goal", "").strip()
+    if not goal:
+        raise HTTPException(status_code=400, detail="goal is required")
+    
+    plan = await plan_task(goal)
+    if plan.get("status") == "error":
+        return plan
+        
+    task_id = plan["task_id"]
+    background_tasks.add_task(execute_task_loop, task_id)
+    return plan
+
+@app.get("/agents/task/{task_id}")
+async def route_get_task(task_id: int):
+    return get_task_status(task_id)
+
+@app.get("/agents/tasks")
+async def route_list_tasks(limit: int = 20):
+    return {"tasks": list_tasks(limit)}
+
+
+# ── Agents: Multi-Agent Spawning ──────────────────────────────────────────────
+from agents.multi_agent import run_multi_agent_workflow
+
+@app.post("/agents/multi")
+async def route_run_multi_agent(request: Request):
+    body = await request.json()
+    goal = body.get("goal", "").strip()
+    if not goal:
+        raise HTTPException(status_code=400, detail="goal is required")
+    
+    result = await run_multi_agent_workflow(goal)
+    return result
+
+
+# ── Agents: Self-Tool Creation ────────────────────────────────────────────────
+from agents.tool_creator import create_self_tool, list_registered_tools
+
+@app.post("/agents/create-tool")
+async def route_create_self_tool(request: Request):
+    body = await request.json()
+    task_desc = body.get("task_description", "").strip()
+    tool_name = body.get("tool_name", "").strip()
+    test_params = body.get("test_params", {})
+    
+    if not task_desc or not tool_name:
+        raise HTTPException(status_code=400, detail="task_description and tool_name are required")
+        
+    result = await create_self_tool(task_desc, tool_name, test_params)
+    return result
+
+@app.get("/agents/tools")
+async def route_list_self_tools():
+    return {"tools": list_registered_tools()}
+
+
+# ── Agents: Self-Learning from Feedback ───────────────────────────────────────
+from agents.learning import log_user_correction, analyze_feedback_and_update_prompt, get_learning_summary
+
+@app.post("/agents/feedback")
+async def route_log_feedback(request: Request):
+    body = await request.json()
+    session_id = body.get("session_id", "").strip()
+    correction = body.get("user_correction", "").strip()
+    response = body.get("model_response", "").strip()
+    
+    if not session_id or not correction or not response:
+        raise HTTPException(status_code=400, detail="session_id, user_correction, and model_response are required")
+        
+    success = log_user_correction(session_id, correction, response)
+    return {"status": "success" if success else "error"}
+
+@app.post("/agents/learning/trigger")
+async def route_trigger_learning():
+    return await analyze_feedback_and_update_prompt()
+
+@app.get("/agents/learning/summary")
+async def route_learning_summary():
+    return get_learning_summary()
+
+
+# ── Agents: 24/7 Scheduler & Automations ──────────────────────────────────────
+from agents.scheduler import create_scheduled_job, list_scheduled_jobs, delete_scheduled_job, trigger_job_now
+
+@app.post("/agents/schedule")
+async def route_create_schedule(request: Request):
+    body = await request.json()
+    name = body.get("name", "").strip()
+    trigger_type = body.get("trigger_type", "").strip()
+    expression = body.get("expression", "").strip()
+    intent = body.get("intent", "").strip()
+    params = body.get("params", {})
+    
+    if not name or not trigger_type or not expression or not intent:
+        raise HTTPException(status_code=400, detail="name, trigger_type, expression, and intent are required")
+        
+    return create_scheduled_job(name, trigger_type, expression, intent, params)
+
+@app.get("/agents/schedules")
+async def route_list_schedules():
+    return {"schedules": list_scheduled_jobs()}
+
+@app.delete("/agents/schedule/{job_id}")
+async def route_delete_schedule(job_id: str):
+    return delete_scheduled_job(job_id)
+
+@app.post("/agents/schedule/{job_id}/trigger")
+async def route_trigger_schedule(job_id: str):
+    return trigger_job_now(job_id)
+
+
+# ── Agents: Predictive Assistance ─────────────────────────────────────────────
+from agents.prediction import predict_next_actions
+
+@app.get("/agents/predict")
+async def route_predict_actions():
+    return await predict_next_actions()
+
+
+# ── Settings: Privacy & Offline Mode ──────────────────────────────────────────
+from agents.privacy import update_privacy_settings, get_privacy_settings
+
+@app.post("/settings/privacy")
+async def route_save_privacy(request: Request):
+    body = await request.json()
+    privacy_mode = body.get("privacy_mode", False)
+    retention_days = body.get("retention_days", 30)
+    
+    return update_privacy_settings(privacy_mode, retention_days)
+
+@app.get("/settings/privacy")
+async def route_get_privacy():
+    return get_privacy_settings()
+
+
+# ── Observability: Admin Statistics Panel ──────────────────────────────────────
+from agents.monitoring import get_admin_stats
+
+@app.get("/admin/stats")
+async def route_admin_stats():
+    return get_admin_stats()
 
 
 @app.get("/control/audit")

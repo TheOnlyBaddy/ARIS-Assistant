@@ -17,8 +17,11 @@ load_dotenv()
 # ── Setup Gemini Vision ───────────────────────────────────────
 _client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
+PRIMARY_MODEL = os.getenv("PRIMARY_MODEL", "gemini-3.5-flash")
+
 VISION_MODELS = [
-    "gemini-2.5-flash",       # Best — matches your main ARIS model
+    PRIMARY_MODEL,
+    "gemini-2.5-flash",       # Fallback
     "gemini-2.0-flash",       # Fallback
     "gemini-2.0-flash-lite",  # Cheapest fallback
 ]
@@ -29,7 +32,7 @@ MAX_WIDTH      = 1280
 JPEG_QUALITY   = 85
 os.makedirs(SCREENSHOT_DIR, exist_ok=True)
 
-print("Gemini Vision ready (gemini-2.5-flash, fast mode)")
+print(f"Gemini Vision ready ({PRIMARY_MODEL}, fast mode)")
 
 # ── Capture screenshot ────────────────────────────────────────
 def capture_screen(monitor_index: int = 1) -> tuple[Image.Image, str]:

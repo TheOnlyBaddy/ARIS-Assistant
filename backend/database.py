@@ -9,6 +9,8 @@ from sqlalchemy.orm import sessionmaker
 from datetime import datetime, timezone
 import os
 
+from agents.privacy import encrypt_text, decrypt_text
+
 def utc_now():
     return datetime.now(timezone.utc)
 
@@ -98,11 +100,15 @@ def save_message(session_id: str, role: str, text: str, model_used: str = None):
     """
     db = SessionLocal()
     try:
+        # Encrypt text if privacy mode is active
+        is_private = os.getenv("PRIVACY_MODE", "false").lower() == "true"
+        text_to_save = encrypt_text(text) if is_private else text
+
         # Save the message
         msg = ConversationMessage(
             session_id=session_id,
             role=role,
-            text=text,
+            text=text_to_save,
             model_used=model_used
         )
         db.add(msg)
@@ -142,7 +148,7 @@ def load_session_from_db(session_id: str) -> list[dict]:
             ConversationMessage.session_id == session_id
         ).order_by(ConversationMessage.timestamp).all()
 
-        return [{"role": msg.role, "text": msg.text} for msg in messages]
+        return [{"role": msg.role, "text": decrypt_text(msg.text)} for msg in messages]
     finally:
         db.close()
 
@@ -164,7 +170,7 @@ def load_all_sessions_from_db() -> dict[str, list[dict]]:
         for msg in all_messages:
             if msg.session_id not in sessions:
                 sessions[msg.session_id] = []
-            sessions[msg.session_id].append({"role": msg.role, "text": msg.text})
+            sessions[msg.session_id].append({"role": msg.role, "text": decrypt_text(msg.text)})
 
         print(f"[ARIS DB] Loaded {len(sessions)} session(s) from database.")
         return sessions

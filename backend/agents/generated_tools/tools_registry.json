@@ -1,0 +1,10 @@
+{
+    "url_extractor": {
+        "description": "Given a text string, find all URLs starting with http:// or https:// and return them as a sorted list.",
+        "file_path": "C:\\Users\\barnw\\OneDrive\\Documents\\Projects\\ARIS\\backend\\agents\\generated_tools\\tool_url_extractor.py",
+        "parameters": [
+            "text"
+        ],
+        "registered_at": "2026-06-29T05:44:07.953063+00:00"
+    }
+}

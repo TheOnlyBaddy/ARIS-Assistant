@@ -6,10 +6,21 @@ import SystemDashboard from "./components/SystemDashboard"
 import IntelligenceDashboard from "./components/IntelligenceDashboard"
 import LifeDashboard from "./components/LifeDashboard"
 import CreativeDashboard from "./components/CreativeDashboard"
+import AgentsDashboard from "./components/AgentsDashboard"
+import SchedulerUI from "./components/SchedulerUI"
 
 const API_BASE = window.location.hostname
   ? `http://${window.location.hostname}:8000`
   : 'http://localhost:8000'
+
+// Install Axios request interceptor to automatically inject X-API-Key header
+axios.interceptors.request.use((config) => {
+  const apiKey = localStorage.getItem("aris_api_key") || "your_secure_token";
+  config.headers["X-API-Key"] = apiKey;
+  return config;
+}, (error) => {
+  return Promise.reject(error);
+});
 
 // ── Typing indicator ───────────────────────────────────────────────────────────
 function TypingIndicator() {
@@ -264,9 +275,251 @@ function VisionModal({ result, onClose }) {
   )
 }
 
+// ── Settings Panel Component ──────────────────────────────────────────────────
+function SettingsPanel({ visible, apiBase }) {
+  const [apiKey, setApiKey] = useState(localStorage.getItem("aris_api_key") || "your_secure_token")
+  const [stats, setStats] = useState(null)
+  const [privacy, setPrivacy] = useState({ privacy_mode: false, retention_days: 30 })
+
+  const fetchSettingsAndStats = async () => {
+    try {
+      const token = localStorage.getItem("aris_api_key") || "your_secure_token"
+      const headers = { "X-API-Key": token }
+      const [statsRes, privRes] = await Promise.all([
+        axios.get(`${apiBase}/admin/stats`, { headers }),
+        axios.get(`${apiBase}/settings/privacy`, { headers })
+      ])
+      setStats(statsRes.data)
+      setPrivacy(privRes.data)
+    } catch (e) {
+      console.error("Error fetching settings/stats:", e)
+    }
+  }
+
+  useEffect(() => {
+    if (!visible) return
+    fetchSettingsAndStats()
+  }, [visible])
+
+  const handleSaveKey = (e) => {
+    e.preventDefault()
+    localStorage.setItem("aris_api_key", apiKey)
+    alert("API Key saved to localStorage!")
+    fetchSettingsAndStats()
+  }
+
+  const handleSavePrivacy = async (e) => {
+    e.preventDefault()
+    try {
+      const token = localStorage.getItem("aris_api_key") || "your_secure_token"
+      const headers = { "X-API-Key": token, "Content-Type": "application/json" }
+      const r = await axios.post(`${apiBase}/settings/privacy`, privacy, { headers })
+      alert(`Privacy policy updated! Pruned ${r.data.messages_pruned} old messages.`)
+      fetchSettingsAndStats()
+    } catch (err) {
+      alert("Failed to save privacy settings: " + (err.response?.data?.detail || err.message))
+    }
+  }
+
+  if (!visible) return null
+
+  return (
+    <div className="settings-panel" style={{
+      color: "#fff",
+      padding: "24px",
+      background: "rgba(10, 10, 15, 0.2)",
+      borderRadius: "16px",
+      backdropFilter: "blur(20px)",
+      border: "1px solid rgba(255, 255, 255, 0.05)",
+      display: "grid",
+      gridTemplateColumns: "1fr 1fr",
+      gap: "24px"
+    }}>
+      <style>{`
+        .settings-card {
+          background: rgba(255, 255, 255, 0.03);
+          border: 1px solid rgba(255, 255, 255, 0.06);
+          border-radius: 12px;
+          padding: 20px;
+          backdrop-filter: blur(10px);
+        }
+        .settings-title {
+          font-size: 1.1rem;
+          font-weight: 700;
+          margin-top: 0;
+          margin-bottom: 16px;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+          padding-bottom: 10px;
+        }
+        .form-group {
+          margin-bottom: 12px;
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+        }
+        .form-label {
+          font-size: 0.8rem;
+          color: #aaa;
+        }
+        .form-input {
+          background: rgba(255, 255, 255, 0.05);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          border-radius: 6px;
+          padding: 8px 12px;
+          color: #fff;
+          font-size: 0.9rem;
+          width: 100%;
+          box-sizing: border-box;
+          outline: none;
+        }
+        .form-input:focus {
+          border-color: #6366f1;
+        }
+        .save-btn {
+          background: linear-gradient(135deg, #6366f1, #8b5cf6);
+          color: #fff;
+          border: none;
+          border-radius: 6px;
+          padding: 10px 16px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: opacity 0.3s;
+        }
+        .save-btn:hover {
+          opacity: 0.9;
+        }
+        .stats-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 12px;
+        }
+        .stat-item {
+          background: rgba(0, 0, 0, 0.2);
+          padding: 12px;
+          border-radius: 6px;
+          text-align: center;
+        }
+        .stat-lbl {
+          font-size: 0.75rem;
+          color: #888;
+        }
+        .stat-val {
+          font-size: 1.25rem;
+          font-weight: 700;
+          color: #6366f1;
+          margin-top: 4px;
+        }
+      `}</style>
+      
+      {/* Left settings column */}
+      <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+        <div className="settings-card">
+          <h3 className="settings-title">🔑 Authentication & API Security</h3>
+          <form onSubmit={handleSaveKey} style={{ display: "grid", gap: "12px" }}>
+            <div className="form-group">
+              <label className="form-label">Client API Key (X-API-Key Header)</label>
+              <input
+                type="password"
+                className="form-input"
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+              />
+              <span style={{ fontSize: "0.7rem", color: "#888" }}>
+                Default: "your_secure_token". Ensure this matches the backend API_KEY env var.
+              </span>
+            </div>
+            <button type="submit" className="save-btn">Save Key</button>
+          </form>
+        </div>
+
+        <div className="settings-card">
+          <h3 className="settings-title">🛡️ Privacy & Containment Policy</h3>
+          <form onSubmit={handleSavePrivacy} style={{ display: "grid", gap: "12px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <span style={{ fontWeight: "600", fontSize: "0.9rem", display: "block" }}>Local Offline Privacy Mode</span>
+                <span style={{ fontSize: "0.75rem", color: "#888" }}>Blocks external APIs & forces local Ollama</span>
+              </div>
+              <input
+                type="checkbox"
+                style={{ width: "18px", height: "18px", cursor: "pointer" }}
+                checked={privacy.privacy_mode}
+                onChange={(e) => setPrivacy({ ...privacy, privacy_mode: e.target.checked })}
+              />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Message Retention Limit (Days)</label>
+              <input
+                type="number"
+                className="form-input"
+                min="1"
+                max="365"
+                value={privacy.retention_days}
+                onChange={(e) => setPrivacy({ ...privacy, retention_days: parseInt(e.target.value) || 30 })}
+              />
+            </div>
+            <button type="submit" className="save-btn">Update Policy</button>
+          </form>
+        </div>
+      </div>
+
+      {/* Right admin statistics panel column */}
+      <div className="settings-card" style={{ display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+        <div>
+          <h3 className="settings-title">📊 Admin & Observability Panel</h3>
+          {stats ? (
+            <div className="stats-grid" style={{ marginBottom: "20px" }}>
+              <div className="stat-item">
+                <div className="stat-lbl">System Uptime</div>
+                <div className="stat-val" style={{ color: "#10b981" }}>Active</div>
+              </div>
+              <div className="stat-item">
+                <div className="stat-lbl">SQLite Database Size</div>
+                <div className="stat-val">{stats.database.db_size_kb.toFixed(1)} KB</div>
+              </div>
+              <div className="stat-item">
+                <div className="stat-lbl">Active Chat Sessions</div>
+                <div className="stat-val">{stats.database.total_active_sessions}</div>
+              </div>
+              <div className="stat-item">
+                <div className="stat-lbl">Synthesized Custom Tools</div>
+                <div className="stat-val" style={{ color: "#8b5cf6" }}>{stats.agents.registered_tools_count}</div>
+              </div>
+              <div className="stat-item">
+                <div className="stat-lbl">Logged Errors Count</div>
+                <div className="stat-val" style={{ color: stats.observability.logged_errors_count > 0 ? "#ef4444" : "#10b981" }}>
+                  {stats.observability.logged_errors_count}
+                </div>
+              </div>
+              <div className="stat-item">
+                <div className="stat-lbl">Logs File Size</div>
+                <div className="stat-val">{stats.observability.log_file_size_kb.toFixed(2)} KB</div>
+              </div>
+            </div>
+          ) : (
+            <p style={{ color: "#888", fontSize: "0.85rem", textAlign: "center" }}>Fetching statistics from backend...</p>
+          )}
+        </div>
+        <div style={{ background: "rgba(0,0,0,0.15)", borderRadius: "8px", padding: "12px", fontSize: "0.75rem", color: "#aaa" }}>
+          <strong>System Status Summary:</strong>
+          <ul style={{ margin: "6px 0 0 0", paddingLeft: "16px" }}>
+            <li>Uptime is logged dynamically since application boot.</li>
+            <li>Error counts represent non-fatal anomalies detected in logs.</li>
+            <li>Custom tools are verified and compiled in sandboxed processes.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 const formatModelName = (modelId) => {
   if (!modelId) return '';
   const mapping = {
+    'gemini-3.5-flash': 'Gemini 3.5 Flash',
     'gemini-2.5-flash': 'Gemini 2.5 Flash',
     'gemini-1.5-flash': 'Gemini 1.5 Flash',
     'gemini-1.5-pro': 'Gemini 1.5 Pro',
@@ -770,7 +1023,7 @@ export default function App() {
         </header>
 
         {/* Tab switcher */}
-        <div className="tab-bar">
+        <div className="tab-bar" style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
           <button
             className={`tab-btn ${activeTab === "chat" ? "active" : ""}`}
             onClick={() => setActiveTab("chat")}
@@ -796,10 +1049,28 @@ export default function App() {
             🎨 Creative
           </button>
           <button
+            className={`tab-btn ${activeTab === "agents" ? "active" : ""}`}
+            onClick={() => setActiveTab("agents")}
+          >
+            🤖 Agents
+          </button>
+          <button
+            className={`tab-btn ${activeTab === "scheduler" ? "active" : ""}`}
+            onClick={() => setActiveTab("scheduler")}
+          >
+            ⏰ Scheduler
+          </button>
+          <button
             className={`tab-btn ${activeTab === "system" ? "active" : ""}`}
             onClick={() => setActiveTab("system")}
           >
             🖥️ System
+          </button>
+          <button
+            className={`tab-btn ${activeTab === "settings" ? "active" : ""}`}
+            onClick={() => setActiveTab("settings")}
+          >
+            ⚙️ Settings
           </button>
         </div>
 
@@ -807,7 +1078,10 @@ export default function App() {
         <IntelligenceDashboard visible={activeTab === "intelligence"} apiBase={API_BASE} />
         <LifeDashboard visible={activeTab === "life"} apiBase={API_BASE} />
         <CreativeDashboard visible={activeTab === "creative"} apiBase={API_BASE} />
+        <AgentsDashboard visible={activeTab === "agents"} />
+        <SchedulerUI visible={activeTab === "scheduler"} />
         <SystemDashboard visible={activeTab === "system"} />
+        <SettingsPanel visible={activeTab === "settings"} apiBase={API_BASE} />
 
         {/* Wrap existing chat content so it hides when system tab is open */}
         {activeTab === "chat" && (

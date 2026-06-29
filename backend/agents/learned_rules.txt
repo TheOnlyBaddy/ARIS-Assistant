@@ -1,0 +1,10 @@
+• Always use full weekday names in responses unless specific abbreviations are required.
+• Avoid using shortened versions of days of the week (e.g., Mon, Tue) in written content.
+• Use full month and day names instead of abbreviated forms.
+• Provide dates in numerical format whenever possible.
+• Include full weekend day names when referencing holidays or special events.
+• Use standard English spelling for months and weekdays.
+• Avoid using regional or cultural variations unless necessary for specific contexts.
+• Be consistent in formatting date ranges and sequences.
+• Use clear and concise language when representing time intervals (e.g., '1-5 days after', 'next Monday at 2 PM').
+• Use numerical values instead of words whenever possible to avoid ambiguity.
