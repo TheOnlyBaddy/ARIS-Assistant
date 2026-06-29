@@ -170,7 +170,9 @@ def check_message_safety(message: str) -> SafetyResult:
     # Destructive keywords in ASK mode
     if TRUST_LEVEL == TrustLevel.ASK:
         for keyword in DESTRUCTIVE_KEYWORDS:
-            if keyword in message_lower:
+            # Use word boundaries to avoid false positives like "nuclear" matching "clear"
+            pattern = re.compile(rf"\b{keyword}\b", re.IGNORECASE)
+            if pattern.search(message_lower):
                 return SafetyResult(
                     is_safe=True,
                     requires_confirmation=True,
