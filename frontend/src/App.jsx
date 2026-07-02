@@ -953,20 +953,32 @@ export default function App() {
             {ollamaStatus?.ollama?.connected && (
               <div className="llm-pills">
                 {ollamaStatus.ollama.models.map(m => {
-                  const name     = m.split(':')[0]
-                  const isChat   = name === ollamaStatus.gemini?.chat_model?.split(':')[0] || name === "aris-llama"
-                  const isWrite  = name === ollamaStatus.gemini?.write_model?.split(':')[0] || name === "aris-mistral"
-                  const isReason = name === ollamaStatus.gemini?.reason_model?.split(':')[0] || name === "aris-gemma"
-                  const role     = isChat ? 'chat' : isWrite ? 'write' : isReason ? 'reason' : null
+                  const name       = m.split(':')[0]
+                  const isChat     = name === ollamaStatus.gemini?.chat_model?.split(':')[0] || name === "aris-qwen"
+                  const isChat2    = name === ollamaStatus.gemini?.secondary_chat_model?.split(':')[0]
+                  const isWrite    = name === ollamaStatus.gemini?.write_model?.split(':')[0] || name === "aris-mistral"
+                  const isReason   = name === ollamaStatus.gemini?.reason_model?.split(':')[0] || name === "aris-gemma"
+                  const isDeep     = name === ollamaStatus.gemini?.deep_reason_model?.split(':')[0]
+                  const isEmbed    = name === ollamaStatus.gemini?.embed_model?.split(':')[0]
+                  
+                  const role = isChat ? 'chat' : 
+                               isChat2 ? 'chat2' : 
+                               isWrite ? 'write' : 
+                               isReason ? 'reason' : 
+                               isDeep ? 'deep' :
+                               isEmbed ? 'embed' : null
 
                   return (
                     <span
                       key={m}
                       className={`llm-pill ollama ${role || ''}`}
                       title={
-                        role === 'chat'   ? 'Used for: chat & reads' :
-                        role === 'write'  ? 'Used for: emails & summaries' :
-                        role === 'reason' ? 'Used for: reasoning & scheduling' :
+                        role === 'chat'   ? 'Used for: complex chat & multi-turn' :
+                        role === 'chat2'  ? 'Used for: casual chat & quick Q&A' :
+                        role === 'write'  ? 'Used for: writing, emails & summaries' :
+                        role === 'reason' ? 'Used for: scheduling, tasks & data' :
+                        role === 'deep'   ? 'Used for: complex logic & math reasoning' :
+                        role === 'embed'  ? 'Used for: vector embeddings (ChromaDB)' :
                         name
                       }
                     >

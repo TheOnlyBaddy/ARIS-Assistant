@@ -79,7 +79,7 @@ def analyze_screen(prompt: str = None, monitor_index: int = 1) -> dict:
     """
     print("Capturing screen...")
     img, path = capture_screen(monitor_index)
-    print(f"   Screenshot: {img.width}x{img.height}px → {path}")
+    print(f"   Screenshot: {img.width}x{img.height}px -> {path}")
 
     # Build prompt
     if not prompt:

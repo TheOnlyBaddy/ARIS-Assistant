@@ -175,7 +175,7 @@ export default function FinetuneDashboard({ visible, apiBase }) {
       <div style={styles.grid}>
         {status && Object.entries(status.model_versions).map(([key, val]) => {
           const rollbacks = status.rollback_versions[key] || [];
-          const ollamaName = key === "llama3.2" ? "aris-llama" : (key === "mistral" ? "aris-mistral" : "aris-gemma");
+          const ollamaName = key === "qwen3" ? "aris-qwen" : (key === "mistral" ? "aris-mistral" : "aris-gemma");
           return (
             <div key={key} style={styles.modelCard}>
               <div style={styles.modelHeader}>

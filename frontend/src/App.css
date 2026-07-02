@@ -273,6 +273,12 @@
   color: #6ee7b7;
 }
 
+.llm-pill.ollama.chat2 {
+  background: rgba(59, 130, 246, 0.12);
+  border-color: rgba(59, 130, 246, 0.3);
+  color: #93c5fd;
+}
+
 .llm-pill.ollama.write {
   background: rgba(245, 158, 11, 0.12);
   border-color: rgba(245, 158, 11, 0.3);
@@ -283,6 +289,18 @@
   background: rgba(239, 68, 68, 0.12);
   border-color: rgba(239, 68, 68, 0.3);
   color: #fca5a5;
+}
+
+.llm-pill.ollama.deep {
+  background: rgba(236, 72, 153, 0.12);
+  border-color: rgba(236, 72, 153, 0.3);
+  color: #fbcfe8;
+}
+
+.llm-pill.ollama.embed {
+  background: rgba(100, 116, 139, 0.12);
+  border-color: rgba(100, 116, 139, 0.3);
+  color: #cbd5e1;
 }
 
 .llm-pill-role {

@@ -134,13 +134,16 @@ from control.pc.hardware import (
 # ─── CONFIG ────────────────────────────────────────────────────────────────────
 
 GEMINI_API_KEY  = os.getenv("GEMINI_API_KEY")
-PRIMARY_MODEL   = os.getenv("PRIMARY_MODEL", "gemini-2.5-flash")
-FALLBACK_MODEL  = os.getenv("FALLBACK_MODEL", "llama3.2")
+PRIMARY_MODEL   = os.getenv("PRIMARY_MODEL", "gemini-3.5-flash")
+FALLBACK_MODEL  = os.getenv("FALLBACK_MODEL", "qwen3:8b")
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 
-OLLAMA_CHAT_MODEL   = os.getenv("OLLAMA_CHAT_MODEL",   "llama3.2")
-OLLAMA_WRITE_MODEL  = os.getenv("OLLAMA_WRITE_MODEL",  "mistral")
-OLLAMA_REASON_MODEL = os.getenv("OLLAMA_REASON_MODEL", "gemma3:4b")
+OLLAMA_CHAT_MODEL            = os.getenv("OLLAMA_CHAT_MODEL",            "qwen3:8b")
+OLLAMA_SECONDARY_CHAT_MODEL  = os.getenv("OLLAMA_SECONDARY_CHAT_MODEL",  "llama3.1:8b")
+OLLAMA_WRITE_MODEL           = os.getenv("OLLAMA_WRITE_MODEL",           "mistral:7b-instruct-v0.3-q4_0")
+OLLAMA_REASON_MODEL          = os.getenv("OLLAMA_REASON_MODEL",          "gemma4:12b")
+OLLAMA_DEEP_REASON_MODEL     = os.getenv("OLLAMA_DEEP_REASON_MODEL",     "deepseek-r1:8b")
+OLLAMA_EMBED_MODEL           = os.getenv("OLLAMA_EMBED_MODEL",           "nomic-embed-text")
 
 async def get_best_ollama_model(target_model: str) -> str:
     """
@@ -148,7 +151,7 @@ async def get_best_ollama_model(target_model: str) -> str:
     If yes, returns the fine-tuned version. If not, falls back to the base model.
     """
     mapping = {
-        OLLAMA_CHAT_MODEL: "aris-llama",
+        OLLAMA_CHAT_MODEL: "aris-qwen",
         OLLAMA_WRITE_MODEL: "aris-mistral",
         OLLAMA_REASON_MODEL: "aris-gemma"
     }
@@ -161,7 +164,7 @@ async def get_best_ollama_model(target_model: str) -> str:
         async with httpx.AsyncClient(timeout=2.0) as client:
             r = await client.get(f"{OLLAMA_BASE_URL}/api/tags")
             if r.status_code == 200:
-                # Extract simple names like "aris-llama" and full names like "aris-llama:latest"
+                # Extract simple names like "aris-qwen" and full names like "aris-qwen:latest"
                 available_simple = [m["name"].split(":")[0] for m in r.json().get("models", [])]
                 available_full = [m["name"] for m in r.json().get("models", [])]
                 if fine_tuned in available_simple or f"{fine_tuned}:latest" in available_full:
@@ -240,7 +243,7 @@ async def lifespan(app: FastAPI):
     profile = load_profile()
     stats   = get_memory_stats()
     safety  = get_safety_config()
-    google  = "✓ connected" if is_authenticated() else "✗ not connected"
+    google  = "connected" if is_authenticated() else "not connected"
     print(f"[ARIS] Ready for {profile.get('name', 'User')} | "
           f"Sessions: {len(conversation_store)} | "
           f"Memories: {stats['total_memories']} | "
@@ -678,6 +681,13 @@ async def ask_ollama_with_context(
     else:
         augmented_system = system_prompt + anti_hallucination
 
+    # Qwen3 think mode disabling by default (faster responses)
+    if "qwen3" in model.lower():
+        complex_triggers = ["solve", "math", "calculate", "proof", "logic", "multi-step", "step by step", "reason"]
+        needs_thinking = any(t in message.lower() for t in complex_triggers)
+        if not needs_thinking:
+            augmented_system += "\n\n[no_think]\nCRITICAL: Do NOT output any thinking process, thought chain, or <think> tags. Provide the direct answer to the user's query immediately."
+
     full_prompt = build_ollama_prompt(history[:-1], augmented_system)
     full_prompt += f"User: {augmented}\nARIS:"
 
@@ -687,7 +697,19 @@ async def ask_ollama_with_context(
             json={"model": model, "prompt": full_prompt, "stream": False}
         )
         r.raise_for_status()
-        return r.json()["response"]
+        response_text = r.json()["response"]
+        
+        # Parse and log DeepSeek-R1 thinking separately
+        if "deepseek-r1" in model.lower():
+            import re
+            think_match = re.search(r"<think>(.*?)</think>", response_text, re.DOTALL)
+            if think_match:
+                thinking_content = think_match.group(1).strip()
+                print(f"\n[DeepSeek-R1 Thinking Log]:\n{thinking_content}\n")
+                # Remove think tags and contents from final response
+                response_text = re.sub(r"<think>.*?</think>", "", response_text, flags=re.DOTALL).strip()
+                
+        return response_text
 
 # ─── ACTION DETAIL BUILDER ─────────────────────────────────────────────────────
 
@@ -850,7 +872,7 @@ async def chat(request: Request, chat_payload: ChatRequest):
     integration_data = None
     if intent != "general_chat":
         integration_data = await execute_intent(intent, params)
-        print(f"[ARIS Router] Executed: {intent} → {integration_data['type']}")
+        print(f"[ARIS Router] Executed: {intent} -> {integration_data['type']}")
 
     # ── MODEL SELECTION ───────────────────────────────────────────────────────────
 
@@ -871,9 +893,13 @@ async def chat(request: Request, chat_payload: ChatRequest):
     # Complex tasks that need Gemini's reasoning power
     # Detected by checking if message looks like a knowledge/writing request
     def _needs_gemini(message: str, intent: str) -> bool:
+        vision_intents = ["take_screenshot", "screen_ocr", "vision_ocr"]
+        msg = message.lower()
+        if intent in vision_intents or any(t in msg for t in ["screen", "ocr", "camera", "see", "vision", "look", "screenshot"]):
+            return True
+
         if intent not in ["general_chat", "knowledge_search", "browser_search"]:
             return False  # System action and control integration intents handled locally
-        msg = message.lower()
         triggers = [
             "what is", "what are", "explain", "how does", "how do",
             "write a", "write an", "generate", "create a story",
@@ -888,14 +914,17 @@ async def chat(request: Request, chat_payload: ChatRequest):
         ]
         return any(t in msg for t in triggers)
 
-    if intent in WRITE_INTENTS:
-        ollama_model = OLLAMA_WRITE_MODEL    # mistral
-    elif intent in REASON_INTENTS:
-        ollama_model = OLLAMA_REASON_MODEL   # gemma3:4b
-    elif intent in DATA_INTENTS:
-        ollama_model = OLLAMA_REASON_MODEL   # gemma3:4b — reads data well
+    msg_lower = request.message.lower()
+    if intent in WRITE_INTENTS or any(t in msg_lower for t in ["write", "draft", "email", "summary", "summarize", "creative"]):
+        ollama_model = OLLAMA_WRITE_MODEL    # mistral:7b-instruct-v0.3-q4_0
+    elif any(t in msg_lower for t in ["solve", "math", "calculate", "logic", "proof", "multi-step", "step by step"]):
+        ollama_model = OLLAMA_DEEP_REASON_MODEL # deepseek-r1:8b
+    elif intent in REASON_INTENTS or intent in DATA_INTENTS or any(t in msg_lower for t in ["schedule", "calendar", "task", "stats", "data"]):
+        ollama_model = OLLAMA_REASON_MODEL   # gemma4:12b
+    elif len(history) > 4 or len(msg_lower) > 100:  # complex conversational or multi-turn
+        ollama_model = OLLAMA_CHAT_MODEL     # qwen3:8b
     else:
-        ollama_model = OLLAMA_CHAT_MODEL     # llama3.2 — fast for simple chat
+        ollama_model = OLLAMA_SECONDARY_CHAT_MODEL # llama3.1:8b (casual chat / quick Q&A)
 
     # ── SHORT CONFIRMATION FOR SUCCESSFUL PC ACTIONS ──────────────────────────────
     if integration_data and integration_data.get("type") == "pc_action":
@@ -1490,7 +1519,7 @@ Keep it conversational, warm, and under 200 words. Do not use bullet points — 
 # ─── VOICE ROUTES ──────────────────────────────────────────────────────────────
 
 _whisper_model = _whisper.load_model("base")
-print("✅ Whisper STT model loaded")
+print("[OK] Whisper STT model loaded")
 
 
 @app.post("/voice/transcribe")
@@ -2765,8 +2794,11 @@ async def ollama_status():
             "connected": True,  # if backend started, Gemini key is loaded
             "model"    : PRIMARY_MODEL,
             "chat_model"  : OLLAMA_CHAT_MODEL,
+            "secondary_chat_model": OLLAMA_SECONDARY_CHAT_MODEL,
             "write_model" : OLLAMA_WRITE_MODEL,
             "reason_model": OLLAMA_REASON_MODEL,
+            "deep_reason_model": OLLAMA_DEEP_REASON_MODEL,
+            "embed_model": OLLAMA_EMBED_MODEL,
         }
     }
 
@@ -2801,9 +2833,9 @@ async def trigger_retrain(background_tasks: BackgroundTasks, force: bool = False
 
 @app.post("/finetune/rollback")
 async def rollback_model(model_type: str):
-    # model_type: llama3.2, mistral, gemma3
-    if model_type not in ["llama3.2", "mistral", "gemma3"]:
-        raise HTTPException(status_code=400, detail="Invalid model type. Must be llama3.2, mistral, or gemma3.")
+    # model_type: qwen3, mistral, gemma4
+    if model_type not in ["qwen3", "mistral", "gemma4"]:
+        raise HTTPException(status_code=400, detail="Invalid model type. Must be qwen3, mistral, or gemma4.")
         
     from finetune.retrain import load_metadata, save_metadata
     meta = load_metadata()
@@ -2816,7 +2848,7 @@ async def rollback_model(model_type: str):
     current_version = meta["model_versions"][model_type]
     
     # Rollback Ollama tag copy
-    ollama_base_tag = "aris-llama" if model_type == "llama3.2" else ("aris-mistral" if model_type == "mistral" else "aris-gemma")
+    ollama_base_tag = "aris-qwen" if model_type == "qwen3" else ("aris-mistral" if model_type == "mistral" else "aris-gemma")
     prev_tag = previous_version.replace("-v", ":")
     
     # Copy previous version tag back to main tag

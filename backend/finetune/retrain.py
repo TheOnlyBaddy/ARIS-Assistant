@@ -22,14 +22,14 @@ DEFAULT_METADATA = {
     "last_trained_timestamp": "1970-01-01T00:00:00Z",
     "examples_at_last_train": 0,
     "model_versions": {
-        "llama3.2": "aris-llama-v1",
+        "qwen3": "aris-qwen-v1",
         "mistral": "aris-mistral-v1",
-        "gemma3": "aris-gemma-v1"
+        "gemma4": "aris-gemma-v1"
     },
     "rollback_versions": {
-        "llama3.2": [],
+        "qwen3": [],
         "mistral": [],
-        "gemma3": []
+        "gemma4": []
     }
 }
 
@@ -90,12 +90,12 @@ def run_retrain_pipeline(force=False, dry_run=False):
         return {"status": "failed", "reason": "Dataset preparation failed"}
 
     # 2. Retrain each model (ordered from smallest to largest parameter size)
-    models_to_train = ["gemma3", "llama3.2", "mistral"]
+    models_to_train = ["gemma4", "qwen3", "mistral"]
     new_versions = {}
     
     for m in models_to_train:
         current_version = meta["model_versions"][m]
-        # Versioning: aris-llama-v1 -> aris-llama-v2
+        # Versioning: aris-qwen-v1 -> aris-qwen-v2
         base_name = current_version.rsplit("-v", 1)[0]
         version_num = int(current_version.rsplit("-v", 1)[1])
         next_version = f"{base_name}-v{version_num + 1}"
@@ -112,9 +112,9 @@ def run_retrain_pipeline(force=False, dry_run=False):
             return {"status": "failed", "reason": f"Training failed for {m}"}
 
         # Track GGUF registry version tags
-        ollama_base_tag = "aris-llama" if m == "llama3.2" else ("aris-mistral" if m == "mistral" else "aris-gemma")
+        ollama_base_tag = "aris-qwen" if m == "qwen3" else ("aris-mistral" if m == "mistral" else "aris-gemma")
         
-        # Tag version in Ollama: aris-llama:v2
+        # Tag version in Ollama: aris-qwen:v2
         tag_cmd = ["ollama", "copy", ollama_base_tag, f"{ollama_base_tag}:{version_num + 1}"]
         env = os.environ.copy()
         env["OLLAMA_HOST"] = "127.0.0.1:11434"

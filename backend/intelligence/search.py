@@ -11,6 +11,7 @@ BRAVE_API_KEY = os.getenv("BRAVE_SEARCH_API_KEY")
 BRAVE_URL = "https://api.search.brave.com/res/v1/web/search"
 
 gemini_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+PRIMARY_MODEL = os.getenv("PRIMARY_MODEL", "gemini-3.5-flash")
 
 
 async def _duckduckgo_search(query: str, num_results: int = 5) -> list:
@@ -153,7 +154,7 @@ async def deep_research(query: str) -> dict:
     )
 
     response = gemini_client.models.generate_content(
-        model="gemini-2.5-flash",
+        model=PRIMARY_MODEL,
         contents=prompt,
         config=types.GenerateContentConfig(
             thinking_config=types.ThinkingConfig(thinking_budget=0)
@@ -185,7 +186,7 @@ async def fact_check(claim: str) -> dict:
     )
 
     response = gemini_client.models.generate_content(
-        model="gemini-2.5-flash",
+        model=PRIMARY_MODEL,
         contents=prompt,
         config=types.GenerateContentConfig(
             thinking_config=types.ThinkingConfig(thinking_budget=0)

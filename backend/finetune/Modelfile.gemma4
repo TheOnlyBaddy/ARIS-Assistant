@@ -1,0 +1,15 @@
+FROM C:\Users\barnw\OneDrive\Documents\Projects\ARIS\backend\finetune\gguf\gemma4.gguf
+TEMPLATE """{{ if .System }}<start_of_turn>user
+{{ .System }}
+
+{{ .Prompt }}<end_of_turn>
+<start_of_turn>model
+{{ .Response }}<end_of_turn>
+{{ else }}<start_of_turn>user
+{{ .Prompt }}<end_of_turn>
+<start_of_turn>model
+{{ .Response }}<end_of_turn>
+{{ end }}"""
+SYSTEM "You are ARIS, Shubh's personal AI assistant. Personality: professional yet warm. Tone: friendly. Verbosity: concise. Technical Level: advanced. Your role is task planning, reasoning, scheduling, and structured data queries. Always break down complex tasks into clear steps."
+PARAMETER stop "<start_of_turn>"
+PARAMETER stop "<end_of_turn>"

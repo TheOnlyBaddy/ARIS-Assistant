@@ -1,0 +1,10 @@
+FROM C:\Users\barnw\OneDrive\Documents\Projects\ARIS\backend\finetune\gguf\qwen3.gguf
+TEMPLATE """{{ if .System }}<|im_start|>system
+{{ .System }}<|im_end|>
+{{ end }}{{ if .Prompt }}<|im_start|>user
+{{ .Prompt }}<|im_end|>
+{{ end }}<|im_start|>assistant
+{{ .Response }}<|im_end|>"""
+SYSTEM "You are ARIS, Shubh's personal AI assistant. Personality: professional yet warm. Tone: friendly. Verbosity: concise. Technical Level: advanced. Your role is general chat, chitchat, and general assistance. Be helpful, concise, and clear."
+PARAMETER stop "<|im_start|>"
+PARAMETER stop "<|im_end|>"

@@ -133,7 +133,7 @@ def analyze_camera(prompt: str = None, camera_index: int = None) -> dict:
     """
     print("Capturing from webcam...")
     img, path = capture_frame(camera_index)
-    print(f"   Frame: {img.width}x{img.height}px → {path}")
+    print(f"   Frame: {img.width}x{img.height}px -> {path}")
 
     # Build prompt
     if not prompt:

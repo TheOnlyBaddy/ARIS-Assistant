@@ -104,9 +104,9 @@ def extract_and_prepare():
 
     # Group message pairs by target role
     model_pairs = {
-        "chat": [],      # llama3.2
+        "chat": [],      # qwen3:8b
         "writing": [],   # mistral
-        "reasoning": []  # gemma3:4b
+        "reasoning": []  # gemma4:12b
     }
 
     # Process DB conversation turns
@@ -135,11 +135,11 @@ def extract_and_prepare():
             completion = clean_response(completion, style)
 
             # Map to model roles based on classification prefix or intent
-            if "llama3.2" in model_used.lower() or "general_chat" in model_used.lower():
+            if "llama3.2" in model_used.lower() or "llama3.1" in model_used.lower() or "qwen3" in model_used.lower() or "general_chat" in model_used.lower():
                 model_pairs["chat"].append({"prompt": prompt, "completion": completion})
             elif "mistral" in model_used.lower() or "creative_writing" in model_used.lower():
                 model_pairs["writing"].append({"prompt": prompt, "completion": completion})
-            elif "gemma3:4b" in model_used.lower() or "reasoning" in model_used.lower() or "network_diagnostics" in model_used.lower():
+            elif "gemma3:4b" in model_used.lower() or "gemma4" in model_used.lower() or "reasoning" in model_used.lower() or "network_diagnostics" in model_used.lower():
                 model_pairs["reasoning"].append({"prompt": prompt, "completion": completion})
             else:
                 # Default fallback based on triggers
@@ -154,9 +154,9 @@ def extract_and_prepare():
 
     # Save to JSONL files (ensuring we include seed data so we have a solid dataset)
     output_files = {
-        "chat": "llama3.2_train.jsonl",
+        "chat": "qwen3_train.jsonl",
         "writing": "mistral_train.jsonl",
-        "reasoning": "gemma3_train.jsonl"
+        "reasoning": "gemma4_train.jsonl"
     }
 
     for role, filename in output_files.items():

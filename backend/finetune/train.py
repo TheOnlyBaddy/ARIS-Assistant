@@ -45,10 +45,10 @@ for d in [ADAPTERS_DIR, MERGED_DIR, GGUF_DIR]:
 
 # Configuration mapping
 MODEL_CONFIGS = {
-    "llama3.2": {
-        "hf_repo": "unsloth/Llama-3.2-3B-Instruct",
-        "dataset_file": "llama3.2_train.jsonl",
-        "ollama_name": "aris-llama",
+    "qwen3": {
+        "hf_repo": "unsloth/Qwen2.5-7B-Instruct",
+        "dataset_file": "qwen3_train.jsonl",
+        "ollama_name": "aris-qwen",
         "target_modules": ["q_proj", "v_proj", "k_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
     },
     "mistral": {
@@ -57,9 +57,9 @@ MODEL_CONFIGS = {
         "ollama_name": "aris-mistral",
         "target_modules": ["q_proj", "v_proj", "k_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
     },
-    "gemma3": {
-        "hf_repo": "unsloth/gemma-2-2b-it",
-        "dataset_file": "gemma3_train.jsonl",
+    "gemma4": {
+        "hf_repo": "unsloth/gemma-2-9b-it",
+        "dataset_file": "gemma4_train.jsonl",
         "ollama_name": "aris-gemma",
         "target_modules": ["q_proj", "v_proj", "k_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
     }
