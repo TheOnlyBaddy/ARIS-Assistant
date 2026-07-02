@@ -1,4 +1,8 @@
 # backend/finetune/train.py
+import sys
+print("[ARIS Finetuner] Initializing script and loading ML libraries (takes 6-8 seconds)...")
+sys.stdout.flush()
+
 """
 QLoRA Fine-Tuning pipeline for ARIS models on Windows.
 Trains models, merges weights on CPU to save VRAM, converts to GGUF, and registers in Ollama.
