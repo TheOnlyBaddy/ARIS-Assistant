@@ -308,7 +308,7 @@ async def log_request_latency(request: Request, call_next):
         session_id = request.headers.get("X-Session-ID", "system")
         
         # Avoid cluttering logs with continuous polling requests
-        if request.url.path not in ("/finetune/status", "/control/system/ollama", "/admin/stats"):
+        if request.url.path not in ("/finetune/status", "/control/system/ollama", "/admin/stats", "/auth/google/status"):
             from agents.monitoring import log_structured
             log_structured(
                 level="INFO",
@@ -319,7 +319,7 @@ async def log_request_latency(request: Request, call_next):
         return response
     except Exception as e:
         duration_ms = (time.time() - start_time) * 1000.0
-        if request.url.path not in ("/finetune/status", "/control/system/ollama", "/admin/stats"):
+        if request.url.path not in ("/finetune/status", "/control/system/ollama", "/admin/stats", "/auth/google/status"):
             from agents.monitoring import log_structured
             log_structured(
                 level="ERROR",
