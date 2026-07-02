@@ -84,7 +84,7 @@ def run_retrain_pipeline(force=False, dry_run=False):
     # 1. Update datasets
     print("Regenerating training datasets...")
     python_exe = sys.executable
-    prep_res = subprocess.run([python_exe, os.path.join(BASE_DIR, "prepare_data.py")], capture_output=True, text=True)
+    prep_res = subprocess.run([python_exe, os.path.join(BASE_DIR, "prepare_data.py")], capture_output=True, text=True, encoding="utf-8")
     if prep_res.returncode != 0:
         print(f"Dataset preparation failed: {prep_res.stderr}")
         return {"status": "failed", "reason": "Dataset preparation failed"}
@@ -106,7 +106,7 @@ def run_retrain_pipeline(force=False, dry_run=False):
         if dry_run:
             train_cmd.append("--dry-run")
             
-        train_res = subprocess.run(train_cmd, capture_output=True, text=True)
+        train_res = subprocess.run(train_cmd, capture_output=True, text=True, encoding="utf-8")
         if train_res.returncode != 0:
             print(f"Training failed for model {m}:\n{train_res.stderr}")
             return {"status": "failed", "reason": f"Training failed for {m}"}

@@ -228,7 +228,7 @@ def train_model(model_name, dry_run=False):
     ]
     
     print(f"Executing: {' '.join(cmd)}")
-    res = subprocess.run(cmd, capture_output=True, text=True)
+    res = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8")
     if res.returncode != 0:
         print(f"GGUF conversion failed:\nSTDOUT:\n{res.stdout}\nSTDERR:\n{res.stderr}")
         return False
@@ -265,7 +265,7 @@ PARAMETER stop "<|reserved_special_token_"
     ollama_cmd = ["ollama", "create", cfg["ollama_name"], "-f", modelfile_path]
     env = os.environ.copy()
     env["OLLAMA_HOST"] = "127.0.0.1:11434"
-    res_ollama = subprocess.run(ollama_cmd, capture_output=True, text=True, env=env)
+    res_ollama = subprocess.run(ollama_cmd, capture_output=True, text=True, env=env, encoding="utf-8")
     
     if res_ollama.returncode != 0:
         print(f"Failed to register model in Ollama:\n{res_ollama.stderr}")
