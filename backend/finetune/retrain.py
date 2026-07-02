@@ -89,8 +89,8 @@ def run_retrain_pipeline(force=False, dry_run=False):
         print(f"Dataset preparation failed: {prep_res.stderr}")
         return {"status": "failed", "reason": "Dataset preparation failed"}
 
-    # 2. Retrain each model
-    models_to_train = ["llama3.2", "mistral", "gemma3"]
+    # 2. Retrain each model (ordered from smallest to largest parameter size)
+    models_to_train = ["gemma3", "llama3.2", "mistral"]
     new_versions = {}
     
     for m in models_to_train:
