@@ -13,6 +13,7 @@ import argparse
 import json
 import torch
 import shutil
+from dotenv import load_dotenv
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
@@ -24,7 +25,11 @@ from trl import SFTTrainer, SFTConfig
 # Paths
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 BACKEND_DIR = os.path.dirname(BASE_DIR)
+PROJECT_DIR = os.path.dirname(BACKEND_DIR)
 DATA_DIR = os.path.join(BASE_DIR, "data")
+
+# Load environment variables
+load_dotenv(os.path.join(PROJECT_DIR, ".env"))
 ADAPTERS_DIR = os.path.join(BASE_DIR, "adapters")
 MERGED_DIR = os.path.join(BASE_DIR, "merged")
 GGUF_DIR = os.path.join(BASE_DIR, "gguf")
