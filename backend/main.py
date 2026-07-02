@@ -307,24 +307,27 @@ async def log_request_latency(request: Request, call_next):
         duration_ms = (time.time() - start_time) * 1000.0
         session_id = request.headers.get("X-Session-ID", "system")
         
-        from agents.monitoring import log_structured
-        log_structured(
-            level="INFO",
-            message=f"HTTP {request.method} {request.url.path} -> {response.status_code}",
-            session_id=session_id,
-            execution_time_ms=duration_ms
-        )
+        # Avoid cluttering logs with continuous polling requests
+        if request.url.path not in ("/finetune/status", "/control/system/ollama", "/admin/stats"):
+            from agents.monitoring import log_structured
+            log_structured(
+                level="INFO",
+                message=f"HTTP {request.method} {request.url.path} -> {response.status_code}",
+                session_id=session_id,
+                execution_time_ms=duration_ms
+            )
         return response
     except Exception as e:
         duration_ms = (time.time() - start_time) * 1000.0
-        from agents.monitoring import log_structured
-        log_structured(
-            level="ERROR",
-            message=f"HTTP {request.method} {request.url.path} failed",
-            session_id=request.headers.get("X-Session-ID", "system"),
-            execution_time_ms=duration_ms,
-            error=str(e)
-        )
+        if request.url.path not in ("/finetune/status", "/control/system/ollama", "/admin/stats"):
+            from agents.monitoring import log_structured
+            log_structured(
+                level="ERROR",
+                message=f"HTTP {request.method} {request.url.path} failed",
+                session_id=request.headers.get("X-Session-ID", "system"),
+                execution_time_ms=duration_ms,
+                error=str(e)
+            )
         raise e
 
 @app.middleware("http")
