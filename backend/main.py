@@ -206,6 +206,14 @@ def ensure_ollama_running():
     # Ollama is not responding. Let's try to start it.
     print("[ARIS Startup] Ollama is not running. Checking if 'ollama' is installed...")
     ollama_bin = shutil.which("ollama")
+    if not ollama_bin:
+        # Check standard Windows installation directory as fallback
+        local_appdata = os.environ.get("LOCALAPPDATA")
+        if local_appdata:
+            win_path = os.path.join(local_appdata, "Programs", "Ollama", "ollama.exe")
+            if os.path.exists(win_path):
+                ollama_bin = win_path
+
     if ollama_bin:
         print(f"[ARIS Startup] Found Ollama binary. Auto-launching 'ollama serve' in background...")
         try:
