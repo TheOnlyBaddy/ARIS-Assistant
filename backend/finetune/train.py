@@ -37,19 +37,19 @@ for d in [ADAPTERS_DIR, MERGED_DIR, GGUF_DIR]:
 # Configuration mapping
 MODEL_CONFIGS = {
     "llama3.2": {
-        "hf_repo": "meta-llama/Llama-3.2-3B-Instruct",
+        "hf_repo": "unsloth/Llama-3.2-3B-Instruct",
         "dataset_file": "llama3.2_train.jsonl",
         "ollama_name": "aris-llama",
         "target_modules": ["q_proj", "v_proj", "k_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
     },
     "mistral": {
-        "hf_repo": "mistralai/Mistral-7B-Instruct-v0.3",
+        "hf_repo": "unsloth/mistral-7b-instruct-v0.3",
         "dataset_file": "mistral_train.jsonl",
         "ollama_name": "aris-mistral",
         "target_modules": ["q_proj", "v_proj", "k_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
     },
     "gemma3": {
-        "hf_repo": "google/gemma-2-2b-it",
+        "hf_repo": "unsloth/gemma-2-2b-it",
         "dataset_file": "gemma3_train.jsonl",
         "ollama_name": "aris-gemma",
         "target_modules": ["q_proj", "v_proj", "k_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
