@@ -258,7 +258,9 @@ PARAMETER stop "<|reserved_special_token_"
 
     print(f"Registering model '{cfg['ollama_name']}' in Ollama...")
     ollama_cmd = ["ollama", "create", cfg["ollama_name"], "-f", modelfile_path]
-    res_ollama = subprocess.run(ollama_cmd, capture_output=True, text=True)
+    env = os.environ.copy()
+    env["OLLAMA_HOST"] = "127.0.0.1:11434"
+    res_ollama = subprocess.run(ollama_cmd, capture_output=True, text=True, env=env)
     
     if res_ollama.returncode != 0:
         print(f"Failed to register model in Ollama:\n{res_ollama.stderr}")

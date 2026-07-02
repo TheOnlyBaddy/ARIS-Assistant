@@ -116,7 +116,9 @@ def run_retrain_pipeline(force=False, dry_run=False):
         
         # Tag version in Ollama: aris-llama:v2
         tag_cmd = ["ollama", "copy", ollama_base_tag, f"{ollama_base_tag}:{version_num + 1}"]
-        subprocess.run(tag_cmd, capture_output=True)
+        env = os.environ.copy()
+        env["OLLAMA_HOST"] = "127.0.0.1:11434"
+        subprocess.run(tag_cmd, capture_output=True, env=env)
         
         new_versions[m] = next_version
         
@@ -128,7 +130,7 @@ def run_retrain_pipeline(force=False, dry_run=False):
             # Remove old version tag from local Ollama to save disk space
             # e.g., ollama rm aris-llama:1
             old_tag = old_version.replace("-v", ":")
-            subprocess.run(["ollama", "rm", old_tag], capture_output=True)
+            subprocess.run(["ollama", "rm", old_tag], capture_output=True, env=env)
             
         meta["rollback_versions"][m] = rollbacks
         meta["model_versions"][m] = next_version

@@ -2822,7 +2822,9 @@ async def rollback_model(model_type: str):
     # Copy previous version tag back to main tag
     # e.g., ollama copy aris-llama:1 aris-llama
     cmd = ["ollama", "copy", prev_tag, ollama_base_tag]
-    res = subprocess.run(cmd, capture_output=True, text=True)
+    env = os.environ.copy()
+    env["OLLAMA_HOST"] = "127.0.0.1:11434"
+    res = subprocess.run(cmd, capture_output=True, text=True, env=env)
     if res.returncode != 0:
         raise HTTPException(status_code=500, detail=f"Ollama rollback copy failed: {res.stderr}")
         
